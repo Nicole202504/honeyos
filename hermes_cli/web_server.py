@@ -13513,6 +13513,11 @@ def _disable_unselected_skills(profile_dir: Path, keep: List[str]) -> int:
 
 
 app.include_router(_profiles_routes.router)
+
+# H2OS is a product orchestration layer over profiles. Keep it in a dedicated
+# router so companion semantics do not leak into the generic Profile API.
+from hermes_cli.web_routers import h2os_companions as _h2os_companion_routes
+app.include_router(_h2os_companion_routes.router)
 from hermes_cli.web_routers.profiles import (  # noqa: E402,F401 — legacy re-exports; tests call these via web_server.<name>
     list_profiles_endpoint,
     create_profile_endpoint,

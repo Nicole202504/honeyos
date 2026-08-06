@@ -87,6 +87,9 @@ const ModelsPage = lazy(() => import("@/pages/ModelsPage"));
 const CronPage = lazy(() => import("@/pages/CronPage"));
 const ProfilesPage = lazy(() => import("@/pages/ProfilesPage"));
 const ProfileBuilderPage = lazy(() => import("@/pages/ProfileBuilderPage"));
+const CompanionsPage = lazy(() => import("@/pages/CompanionsPage"));
+const CompanionCreatePage = lazy(() => import("@/pages/CompanionCreatePage"));
+const CompanionPage = lazy(() => import("@/pages/CompanionPage"));
 const SkillsPage = lazy(() => import("@/pages/SkillsPage"));
 const PluginsPage = lazy(() => import("@/pages/PluginsPage"));
 const McpPage = lazy(() => import("@/pages/McpPage"));
@@ -169,6 +172,9 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/system": SystemPage,
   "/profiles": ProfilesPage,
   "/profiles/new": ProfileBuilderPage,
+  "/companions": CompanionsPage,
+  "/companions/new": CompanionCreatePage,
+  "/companions/:id": CompanionPage,
   "/config": ConfigPage,
   "/env": EnvPage,
   "/docs": DocsPage,
@@ -183,6 +189,7 @@ function ChatRouteSink() {
 }
 
 const BUILTIN_NAV_REST: NavItem[] = [
+  { path: "/companions", label: "Companions", icon: Heart },
   {
     path: "/sessions",
     labelKey: "sessions",

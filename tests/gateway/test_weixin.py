@@ -196,6 +196,40 @@ class TestWeixinQrLogin:
         assert result is None
         assert api_get_mock.await_count == 2
 
+    @pytest.mark.asyncio
+    async def test_reusable_qr_flow_refreshes_and_confirms_without_exposing_storage_details(
+        self, tmp_path
+    ):
+        service = weixin.WeixinQrOnboarding(str(tmp_path))
+        service._get = AsyncMock(
+            side_effect=[
+                {"qrcode": "qr-1", "qrcode_img_content": "https://example.com/qr-1"},
+                {"status": "expired"},
+                {"qrcode": "qr-2", "qrcode_img_content": "https://example.com/qr-2"},
+                {
+                    "status": "confirmed",
+                    "ilink_bot_id": "bot-1",
+                    "bot_token": "secret-token",
+                    "baseurl": "https://weixin.example.com",
+                    "ilink_user_id": "user-1",
+                },
+            ]
+        )
+
+        state = await service.start()
+        refreshed = await service.poll(state)
+        assert refreshed == {"status": "waiting", "qr_changed": True}
+        assert state.qrcode == "qr-2"
+        assert state.refresh_count == 1
+
+        confirmed = await service.poll(state)
+        assert confirmed["status"] == "confirmed"
+        assert confirmed["credentials"]["token"] == "secret-token"
+        stored = json.loads(
+            (tmp_path / "weixin" / "accounts" / "bot-1.json").read_text()
+        )
+        assert stored["token"] == "secret-token"
+
 
 class TestWeixinSendMessageIntegration:
     def test_parse_target_ref_accepts_weixin_ids(self):
@@ -827,4 +861,3 @@ class TestWeixinVoiceGatewayHandoff:
             "VOICE event body leaked Tencent's STT text — runner would trust "
             "the wrong transcript instead of re-transcribing (#27300)."
         )
-

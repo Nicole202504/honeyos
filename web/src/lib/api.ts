@@ -732,6 +732,50 @@ export const api = {
       },
     ),
 
+  // H2OS companions — product semantics over isolated Hermes profiles.
+  getCompanions: () =>
+    fetchJSON<{ companions: Companion[] }>("/api/h2os/companions"),
+  getCompanion: (id: string) =>
+    fetchJSON<Companion>(`/api/h2os/companions/${encodeURIComponent(id)}`),
+  createCompanion: (body: CompanionCreateRequest) =>
+    fetchJSON<CompanionCreateResponse>("/api/h2os/companions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  updateCompanionIdentity: (id: string, body: CompanionIdentityRequest) =>
+    fetchJSON<Companion>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/identity`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
+  getCompanionCapabilities: (id: string) =>
+    fetchJSON<{ capabilities: CompanionCapability[] }>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/capabilities`,
+    ),
+  installCompanionCapability: (id: string, capabilityId: string) =>
+    fetchJSON<{ ok: boolean; status: string; pid: number }>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capabilityId)}/install`,
+      { method: "POST" },
+    ),
+  startCompanionWeixin: (id: string) =>
+    fetchJSON<CompanionWeixinSession>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/channels/weixin/start`,
+      { method: "POST" },
+    ),
+  getCompanionWeixinStatus: (id: string, requestId: string) =>
+    fetchJSON<CompanionWeixinSession>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/channels/weixin/status?request_id=${encodeURIComponent(requestId)}`,
+    ),
+  cancelCompanionWeixin: (id: string, requestId: string) =>
+    fetchJSON<{ ok: boolean }>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/channels/weixin?request_id=${encodeURIComponent(requestId)}`,
+      { method: "DELETE" },
+    ),
+
   // Skills & Toolsets
   //
   // All calls accept an optional ``profile`` so the Skills page can manage
@@ -2506,6 +2550,72 @@ export interface OAuthPollResponse {
   status: "pending" | "approved" | "denied" | "expired" | "error";
   error_message?: string | null;
   expires_at?: number | null;
+}
+
+// ── H2OS companion types ────────────────────────────────────────────
+
+export interface CompanionIdentityRequest {
+  display_name: string;
+  relationship_type: string;
+  personality: string;
+  communication_style: string;
+  boundaries: string;
+  advanced_system_prompt: string;
+  avatar_data_url?: string | null;
+}
+
+export interface CompanionCreateRequest extends CompanionIdentityRequest {
+  provider: string;
+  model: string;
+  api_key?: string;
+  user_name?: string;
+  timezone?: string;
+  user_preferences?: string[];
+  initial_commitments?: string[];
+}
+
+export interface Companion extends CompanionIdentityRequest {
+  schema_version: number;
+  companion_id: string;
+  profile_name: string;
+  avatar?: string | null;
+  provider: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+  setup_status: "provisioning" | "needs_channel" | "ready" | "error";
+  setup_step: string;
+  setup_error?: string | null;
+  channel?: string | null;
+}
+
+export interface CompanionCreateResponse {
+  ok: boolean;
+  companion_id: string;
+  profile_name: string;
+  setup_status: Companion["setup_status"];
+  next_step?: string | null;
+}
+
+export interface CompanionCapability {
+  id: string;
+  name: string;
+  description: string;
+  status: "available" | "coming_soon";
+  skill_identifier?: string | null;
+  required_tools: string[];
+  permissions: string[];
+  installed: boolean;
+}
+
+export interface CompanionWeixinSession {
+  request_id: string;
+  status: "waiting" | "scanned" | "confirmed" | "expired";
+  qr_content?: string;
+  expires_at?: number;
+  companion?: Companion;
+  gateway_restart_started?: boolean;
+  gateway_restart_error?: string;
 }
 
 // ── Dashboard theme types ──────────────────────────────────────────────

@@ -26,6 +26,7 @@ import tempfile
 import textwrap
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -1034,6 +1035,118 @@ def _save_sync_buf(hermes_home: str, account_id: str, sync_buf: str) -> None:
     atomic_json_write(path, {"get_updates_buf": sync_buf})
 
 
+@dataclass
+class WeixinQrState:
+    """Server-side state for one iLink QR login attempt."""
+
+    qrcode: str
+    qr_content: str
+    base_url: str = ILINK_BASE_URL
+    refresh_count: int = 0
+    expires_at: float = 0.0
+
+
+class WeixinQrOnboarding:
+    """UI-neutral Weixin QR state machine shared by CLI and dashboard."""
+
+    def __init__(
+        self,
+        hermes_home: str,
+        *,
+        bot_type: str = "3",
+        max_refreshes: int = 3,
+        display_ttl_seconds: int = 240,
+    ) -> None:
+        self.hermes_home = hermes_home
+        self.bot_type = bot_type
+        self.max_refreshes = max_refreshes
+        self.display_ttl_seconds = display_ttl_seconds
+
+    async def _get(self, *, base_url: str, endpoint: str) -> Dict[str, Any]:
+        if not AIOHTTP_AVAILABLE:
+            raise RuntimeError("aiohttp is required for Weixin QR login")
+        async with aiohttp.ClientSession(
+            trust_env=True,
+            connector=_make_ssl_connector(),
+        ) as session:
+            return await _api_get(
+                session,
+                base_url=base_url,
+                endpoint=endpoint,
+                timeout_ms=QR_TIMEOUT_MS,
+            )
+
+    async def _new_qr(self, *, refresh_count: int = 0) -> WeixinQrState:
+        response = await self._get(
+            base_url=ILINK_BASE_URL,
+            endpoint=f"{EP_GET_BOT_QR}?bot_type={self.bot_type}",
+        )
+        qrcode_value = str(response.get("qrcode") or "")
+        qrcode_url = str(response.get("qrcode_img_content") or "")
+        if not qrcode_value:
+            raise RuntimeError("Weixin QR response did not include a QR token")
+        return WeixinQrState(
+            qrcode=qrcode_value,
+            qr_content=qrcode_url or qrcode_value,
+            refresh_count=refresh_count,
+            expires_at=time.time() + self.display_ttl_seconds,
+        )
+
+    async def start(self) -> WeixinQrState:
+        return await self._new_qr()
+
+    async def poll(self, state: WeixinQrState) -> Dict[str, Any]:
+        response = await self._get(
+            base_url=state.base_url,
+            endpoint=f"{EP_GET_QR_STATUS}?qrcode={state.qrcode}",
+        )
+        status = str(response.get("status") or "wait")
+        if status == "wait":
+            return {"status": "waiting"}
+        if status == "scaned":
+            return {"status": "scanned"}
+        if status == "scaned_but_redirect":
+            redirect_host = str(response.get("redirect_host") or "").strip()
+            if redirect_host:
+                state.base_url = f"https://{redirect_host}"
+            return {"status": "scanned"}
+        if status == "expired":
+            if state.refresh_count >= self.max_refreshes:
+                return {"status": "expired"}
+            refreshed = await self._new_qr(refresh_count=state.refresh_count + 1)
+            state.qrcode = refreshed.qrcode
+            state.qr_content = refreshed.qr_content
+            state.base_url = refreshed.base_url
+            state.refresh_count = refreshed.refresh_count
+            state.expires_at = refreshed.expires_at
+            return {"status": "waiting", "qr_changed": True}
+        if status != "confirmed":
+            raise RuntimeError(f"Unknown Weixin QR status: {status}")
+
+        account_id = str(response.get("ilink_bot_id") or "")
+        token = str(response.get("bot_token") or "")
+        base_url = str(response.get("baseurl") or ILINK_BASE_URL)
+        user_id = str(response.get("ilink_user_id") or "")
+        if not account_id or not token:
+            raise RuntimeError("Weixin confirmed login without complete credentials")
+        save_weixin_account(
+            self.hermes_home,
+            account_id=account_id,
+            token=token,
+            base_url=base_url,
+            user_id=user_id,
+        )
+        return {
+            "status": "confirmed",
+            "credentials": {
+                "account_id": account_id,
+                "token": token,
+                "base_url": base_url,
+                "user_id": user_id,
+            },
+        }
+
+
 async def qr_login(
     hermes_home: str,
     *,
@@ -1045,128 +1158,59 @@ async def qr_login(
 
     Returns a credential dict on success, or ``None`` if login fails or times out.
     """
-    if not AIOHTTP_AVAILABLE:
-        raise RuntimeError("aiohttp is required for Weixin QR login")
+    service = WeixinQrOnboarding(hermes_home, bot_type=bot_type)
+    try:
+        state = await service.start()
+    except Exception as exc:
+        logger.error("weixin: failed to fetch QR code: %s", exc)
+        return None
 
-    async with aiohttp.ClientSession(trust_env=True, connector=_make_ssl_connector()) as session:
-        try:
-            qr_resp = await _api_get(
-                session,
-                base_url=ILINK_BASE_URL,
-                endpoint=f"{EP_GET_BOT_QR}?bot_type={bot_type}",
-                timeout_ms=QR_TIMEOUT_MS,
-            )
-        except Exception as exc:
-            logger.error("weixin: failed to fetch QR code: %s", exc)
-            return None
-
-        qrcode_value = str(qr_resp.get("qrcode") or "")
-        qrcode_url = str(qr_resp.get("qrcode_img_content") or "")
-        if not qrcode_value:
-            logger.error("weixin: QR response missing qrcode")
-            return None
-
-        # qrcode_url is the full scannable liteapp URL; qrcode_value is just the hex token
-        # WeChat needs to scan the full URL, not the raw hex string
-        qr_scan_data = qrcode_url if qrcode_url else qrcode_value
-
+    def _render_qr(scan_data: str) -> None:
         print("\n请使用微信扫描以下二维码：")
-        if qrcode_url:
-            print(qrcode_url)
+        if scan_data.startswith("http"):
+            print(scan_data)
         try:
             import qrcode
 
             qr = qrcode.QRCode()
-            qr.add_data(qr_scan_data)
+            qr.add_data(scan_data)
             qr.make(fit=True)
             qr.print_ascii(invert=True)
-        except Exception as _qr_exc:
-            print(f"（终端二维码渲染失败: {_qr_exc}，请直接打开上面的二维码链接）")
+        except Exception as qr_exc:
+            print(f"（终端二维码渲染失败: {qr_exc}，请直接打开上面的二维码链接）")
 
-        deadline = time.monotonic() + timeout_seconds
-        current_base_url = ILINK_BASE_URL
-        refresh_count = 0
-
-        while time.monotonic() < deadline:
-            try:
-                status_resp = await _api_get(
-                    session,
-                    base_url=current_base_url,
-                    endpoint=f"{EP_GET_QR_STATUS}?qrcode={qrcode_value}",
-                    timeout_ms=QR_TIMEOUT_MS,
-                )
-            except asyncio.TimeoutError:
-                await asyncio.sleep(1)
-                continue
-            except Exception as exc:
-                logger.warning("weixin: QR poll error: %s", exc)
-                await asyncio.sleep(1)
-                continue
-
-            status = str(status_resp.get("status") or "wait")
-            if status == "wait":
-                print(".", end="", flush=True)
-            elif status == "scaned":
-                print("\n已扫码，请在微信里确认...")
-            elif status == "scaned_but_redirect":
-                redirect_host = str(status_resp.get("redirect_host") or "")
-                if redirect_host:
-                    current_base_url = f"https://{redirect_host}"
-            elif status == "expired":
-                refresh_count += 1
-                if refresh_count > 3:
-                    print("\n二维码多次过期，请重新执行登录。")
-                    return None
-                print(f"\n二维码已过期，正在刷新... ({refresh_count}/3)")
-                try:
-                    qr_resp = await _api_get(
-                        session,
-                        base_url=ILINK_BASE_URL,
-                        endpoint=f"{EP_GET_BOT_QR}?bot_type={bot_type}",
-                        timeout_ms=QR_TIMEOUT_MS,
-                    )
-                    qrcode_value = str(qr_resp.get("qrcode") or "")
-                    qrcode_url = str(qr_resp.get("qrcode_img_content") or "")
-                    qr_scan_data = qrcode_url if qrcode_url else qrcode_value
-                    if qrcode_url:
-                        print(qrcode_url)
-                    try:
-                        import qrcode as _qrcode
-                        qr = _qrcode.QRCode()
-                        qr.add_data(qr_scan_data)
-                        qr.make(fit=True)
-                        qr.print_ascii(invert=True)
-                    except Exception:
-                        pass
-                except Exception as exc:
-                    logger.error("weixin: QR refresh failed: %s", exc)
-                    return None
-            elif status == "confirmed":
-                account_id = str(status_resp.get("ilink_bot_id") or "")
-                token = str(status_resp.get("bot_token") or "")
-                base_url = str(status_resp.get("baseurl") or ILINK_BASE_URL)
-                user_id = str(status_resp.get("ilink_user_id") or "")
-                if not account_id or not token:
-                    logger.error("weixin: QR confirmed but credential payload was incomplete")
-                    return None
-                save_weixin_account(
-                    hermes_home,
-                    account_id=account_id,
-                    token=token,
-                    base_url=base_url,
-                    user_id=user_id,
-                )
-                print(f"\n微信连接成功，account_id={account_id}")
-                return {
-                    "account_id": account_id,
-                    "token": token,
-                    "base_url": base_url,
-                    "user_id": user_id,
-                }
+    _render_qr(state.qr_content)
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            result = await service.poll(state)
+        except asyncio.TimeoutError:
             await asyncio.sleep(1)
+            continue
+        except Exception as exc:
+            logger.warning("weixin: QR poll error: %s", exc)
+            await asyncio.sleep(1)
+            continue
 
-        print("\n微信登录超时。")
-        return None
+        if result["status"] == "waiting":
+            if result.get("qr_changed"):
+                print(f"\n二维码已过期，已刷新 ({state.refresh_count}/3)")
+                _render_qr(state.qr_content)
+            else:
+                print(".", end="", flush=True)
+        elif result["status"] == "scanned":
+            print("\n已扫码，请在微信里确认...")
+        elif result["status"] == "expired":
+            print("\n二维码多次过期，请重新执行登录。")
+            return None
+        elif result["status"] == "confirmed":
+            credentials = result["credentials"]
+            print(f"\n微信连接成功，account_id={credentials['account_id']}")
+            return credentials
+        await asyncio.sleep(1)
+
+    print("\n微信登录超时。")
+    return None
 
 
 class WeixinAdapter(BasePlatformAdapter):
