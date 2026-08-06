@@ -165,6 +165,13 @@ def test_companion_api_creates_and_reads_by_stable_id(profile_env: Path):
         assert detail.status_code == 200, detail.text
         assert detail.json()["display_name"] == "Luna"
 
+        runtime = client.get(
+            f"/api/h2os/companions/{created['companion_id']}/runtime"
+        )
+        assert runtime.status_code == 200, runtime.text
+        assert runtime.json()["profile_name"] == created["profile_name"]
+        assert "gateway run" in runtime.json()["terminal_command"]
+
         listing = client.get("/api/h2os/companions")
         assert listing.status_code == 200, listing.text
         assert [item["companion_id"] for item in listing.json()["companions"]] == [
@@ -278,7 +285,9 @@ def test_weixin_confirmation_configures_only_the_companion_profile(
 
     env_text = (profile_home / ".env").read_text(encoding="utf-8")
     assert "WEIXIN_TOKEN=profile-only-token" in env_text
-    assert "WEIXIN_DM_POLICY=pairing" in env_text
+    assert "WEIXIN_DM_POLICY=allowlist" in env_text
+    assert "WEIXIN_ALLOWED_USERS=user-1" in env_text
+    assert "WEIXIN_HOME_CHANNEL=user-1" in env_text
     root_env = profile_env / ".env"
     if root_env.exists():
         assert "profile-only-token" not in root_env.read_text(encoding="utf-8")
@@ -289,3 +298,31 @@ def test_weixin_confirmation_configures_only_the_companion_profile(
     assert saved.channel == "weixin"
     assert called["profile"] == companion.profile_name
     assert result["gateway_restart_pid"] == 4321
+
+
+def test_terminal_run_uses_companion_profile_gateway(profile_env: Path, monkeypatch):
+    from h2os import cli
+
+    companion = ProfileOrchestrator().create(request(api_key=None))
+    profile_home = profile_env / "profiles" / companion.profile_name
+    companion.channel = "weixin"
+    companion.setup_status = "ready"
+    CompanionStore().save(profile_home, companion)
+    executed = {}
+
+    def fake_execv(executable, argv):
+        executed["executable"] = executable
+        executed["argv"] = argv
+        raise RuntimeError("exec intercepted")
+
+    monkeypatch.setattr(cli.os, "execv", fake_execv)
+    with pytest.raises(RuntimeError, match="exec intercepted"):
+        cli.run_companion(companion.profile_name)
+
+    assert executed["argv"][3:] == [
+        "--profile",
+        companion.profile_name,
+        "gateway",
+        "run",
+        "--replace",
+    ]

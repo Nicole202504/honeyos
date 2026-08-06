@@ -25,7 +25,19 @@ hermes dashboard
 1. 创建伴侣，选择模型并填写该模型服务的 API Key。
 2. 进入伴侣详情，点击「扫码连接微信」。
 3. 用微信扫码并在手机上确认。H2OS 会把凭据保存到该伴侣的独立 Hermes Profile，并启动对应 Gateway。
-4. 第一个陌生私聊用户默认走 Hermes 的 pairing 审批，不会向所有人开放。
+4. 扫码的微信账号会自动成为唯一 owner 和 Home Channel。去微信给 iLink Bot 发第一条消息，伴侣会直接回复。
+
+## 终端运行微信伴侣
+
+前端只用于创建和管理，微信消息由 Hermes Gateway 运行。创建伴侣后，可以完全从终端连接和运行：
+
+```bash
+hermes companion list
+hermes companion connect-weixin <伴侣名或 Profile>
+hermes companion run <伴侣名或 Profile>
+```
+
+`run` 会在前台运行该伴侣的 Profile Gateway。只要这个进程在运行，网页关闭后仍可以在微信中聊天。
 
 Windows 请在 WSL2 中执行上述命令，或参考 Hermes 主 README 的 Windows 安装方式。
 

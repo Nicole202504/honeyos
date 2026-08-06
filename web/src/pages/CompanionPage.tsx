@@ -13,6 +13,7 @@ import {
   api,
   type Companion,
   type CompanionCapability,
+  type CompanionRuntime,
   type CompanionWeixinSession,
 } from "@/lib/api";
 
@@ -38,6 +39,8 @@ export default function CompanionPage() {
   const [weixinSession, setWeixinSession] = useState<CompanionWeixinSession | null>(null);
   const [weixinQr, setWeixinQr] = useState("");
   const [startingWeixin, setStartingWeixin] = useState(false);
+  const [runtime, setRuntime] = useState<CompanionRuntime | null>(null);
+  const [restartingRuntime, setRestartingRuntime] = useState(false);
   const weixinQrContent = weixinSession?.qr_content;
   const weixinRequestId = weixinSession?.request_id;
   const weixinStatus = weixinSession?.status;
@@ -49,6 +52,10 @@ export default function CompanionPage() {
         .then(result => setCapabilities(result.capabilities)),
     [id],
   );
+  const loadRuntime = useCallback(
+    () => api.getCompanionRuntime(id).then(setRuntime),
+    [id],
+  );
   useEffect(() => {
     api
       .getCompanion(id)
@@ -58,6 +65,13 @@ export default function CompanionPage() {
       );
     void loadCapabilities();
   }, [id, loadCapabilities]);
+
+  useEffect(() => {
+    if (companion?.channel !== "weixin") return;
+    void loadRuntime();
+    const timer = window.setInterval(() => void loadRuntime(), 3000);
+    return () => window.clearInterval(timer);
+  }, [companion?.channel, loadRuntime]);
 
   useEffect(() => {
     if (!weixinQrContent) return;
@@ -84,6 +98,7 @@ export default function CompanionPage() {
         if (!active) return;
         setWeixinSession(result);
         if (result.companion) setCompanion(result.companion);
+        if (result.status === "confirmed") window.setTimeout(() => void loadRuntime(), 1000);
         if (result.status === "confirmed" && result.gateway_restart_error) {
           setError(`微信已连接，但启动消息服务失败：${result.gateway_restart_error}`);
         }
@@ -98,7 +113,7 @@ export default function CompanionPage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [id, weixinRequestId, weixinStatus]);
+  }, [id, loadRuntime, weixinRequestId, weixinStatus]);
 
   const connectWeixin = async () => {
     setStartingWeixin(true);
@@ -121,6 +136,19 @@ export default function CompanionPage() {
       }
     }
     setWeixinSession(null);
+  };
+
+  const restartRuntime = async () => {
+    setRestartingRuntime(true);
+    setError("");
+    try {
+      await api.restartCompanionRuntime(id);
+      window.setTimeout(() => void loadRuntime(), 1500);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "无法启动微信消息服务");
+    } finally {
+      setRestartingRuntime(false);
+    }
   };
 
   const install = async (capability: CompanionCapability) => {
@@ -197,7 +225,11 @@ export default function CompanionPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge tone="outline">
-            {companion.setup_status === "needs_channel"
+            {runtime?.gateway_running
+              ? "微信在线"
+              : companion.channel === "weixin"
+                ? "微信已连接 · 服务启动中"
+                : companion.setup_status === "needs_channel"
               ? "等待连接微信"
               : companion.setup_status}
           </Badge>
@@ -254,9 +286,16 @@ export default function CompanionPage() {
             <h3 className="mt-4 font-medium">微信私聊</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {companion.channel === "weixin"
-                ? "已连接 iLink Bot，消息服务正常启动后即可私聊。"
+                ? runtime?.gateway_running
+                  ? "伴侣已在线。现在去微信给 iLink Bot 发第一条消息。"
+                  : "微信已连接，正在启动伴侣的消息服务。"
                 : "连接 iLink Bot 后，它会成为日常联系人。"}
             </p>
+            {companion.channel === "weixin" && !runtime?.gateway_running && (
+              <Button className="mt-4" size="sm" disabled={restartingRuntime} onClick={() => void restartRuntime()}>
+                {restartingRuntime ? "正在启动…" : "启动微信消息服务"}
+              </Button>
+            )}
             <Button className="mt-4" size="sm" disabled={startingWeixin} onClick={() => void connectWeixin()}>
               {startingWeixin ? "正在获取二维码…" : companion.channel === "weixin" ? "重新连接" : "扫码连接微信"}
             </Button>
@@ -274,7 +313,7 @@ export default function CompanionPage() {
                 {weixinSession.status === "scanned"
                   ? "已扫码，等待你在微信中确认…"
                   : weixinSession.status === "confirmed"
-                    ? "凭据已安全保存到这个伴侣的 Profile。"
+                    ? "已安全连接。你的微信已自动设为唯一 owner，现在去给 iLink Bot 发第一条消息。"
                     : weixinSession.status === "expired"
                       ? "二维码已过期，请关闭后重新连接。"
                       : "页面会自动等待扫码结果。"}
@@ -284,7 +323,7 @@ export default function CompanionPage() {
               <img src={weixinQr} alt="微信登录二维码" className="h-64 w-64 rounded-xl bg-white p-2" />
             )}
             <p className="max-w-xl text-xs text-muted-foreground">
-              这里连接的是微信 iLink Bot 身份，主要支持私聊；普通微信群通常无法使用。首次私聊默认需要配对批准。
+              这里连接的是微信 iLink Bot 身份，主要支持私聊；普通微信群通常无法使用。扫码的微信账号会自动成为唯一 owner。
             </p>
             <Button size="sm" outlined onClick={() => void cancelWeixin()}>关闭</Button>
           </CardContent>

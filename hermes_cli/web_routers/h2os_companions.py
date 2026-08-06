@@ -8,13 +8,13 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
 from h2os.capability_catalog import catalog_for_profile, get_capability
+from h2os.channel_service import CompanionChannelService
 from h2os.companion_models import (
     CompanionCreate,
     CompanionCreateResponse,
@@ -22,18 +22,14 @@ from h2os.companion_models import (
 )
 from h2os.companion_store import CompanionStore
 from h2os.profile_orchestrator import ProfileOrchestrator
-from gateway.platforms.weixin import (
-    WEIXIN_CDN_BASE_URL,
-    WeixinQrOnboarding,
-    WeixinQrState,
-    check_weixin_requirements,
-)
+from gateway.platforms.weixin import WeixinQrOnboarding, WeixinQrState, check_weixin_requirements
 
 
 router = APIRouter(prefix="/api/h2os", tags=["h2os"])
 _log = logging.getLogger("hermes_cli.web_server")
 _store = CompanionStore()
 _orchestrator = ProfileOrchestrator(_store)
+_channels = CompanionChannelService(_store)
 _weixin_lock = threading.RLock()
 
 
@@ -94,34 +90,12 @@ def _finish_weixin_setup(
     session: _WeixinSession,
     credentials: dict[str, str],
 ) -> dict[str, Any]:
-    from hermes_cli.config import save_env_value, write_platform_config_field
-    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-
-    token = set_hermes_home_override(str(session.profile_home))
-    try:
-        values = {
-            "WEIXIN_ACCOUNT_ID": credentials["account_id"],
-            "WEIXIN_TOKEN": credentials["token"],
-            "WEIXIN_BASE_URL": credentials["base_url"],
-            "WEIXIN_CDN_BASE_URL": WEIXIN_CDN_BASE_URL,
-            "WEIXIN_DM_POLICY": "pairing",
-            "WEIXIN_ALLOW_ALL_USERS": "false",
-            "WEIXIN_ALLOWED_USERS": "",
-            "WEIXIN_GROUP_POLICY": "disabled",
-        }
-        for key, value in values.items():
-            save_env_value(key, value)
-        write_platform_config_field("weixin", "enabled", True)
-    finally:
-        reset_hermes_home_override(token)
-
     _home, companion = _find(session.companion_id)
-    companion.channel = "weixin"
-    companion.setup_status = "ready"
-    companion.setup_step = "gateway"
-    companion.setup_error = None
-    companion.updated_at = datetime.now(timezone.utc)
-    _store.save(session.profile_home, companion)
+    companion = _channels.configure_weixin(
+        session.profile_home,
+        companion,
+        credentials,
+    )
 
     from hermes_cli.web_deps import late
 
@@ -171,6 +145,32 @@ def list_companions():
 def get_companion(companion_id: str):
     _home, companion = _find(companion_id)
     return companion
+
+
+@router.get("/companions/{companion_id}/runtime")
+def get_companion_runtime(companion_id: str):
+    home, companion = _find(companion_id)
+    from hermes_cli import profiles
+
+    return {
+        "companion_id": companion_id,
+        "profile_name": companion.profile_name,
+        "channel": companion.channel,
+        "gateway_running": profiles._check_gateway_running(home),
+        "terminal_command": f"hermes -p {companion.profile_name} gateway run",
+    }
+
+
+@router.post("/companions/{companion_id}/runtime/restart")
+def restart_companion_runtime(companion_id: str):
+    _home, companion = _find(companion_id)
+    from hermes_cli.web_deps import late
+
+    try:
+        proc, reused = late("_spawn_gateway_restart")(companion.profile_name)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not restart companion Gateway") from exc
+    return {"ok": True, "pid": proc.pid, "reused": reused}
 
 
 @router.put("/companions/{companion_id}/identity")

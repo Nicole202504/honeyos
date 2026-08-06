@@ -775,6 +775,15 @@ export const api = {
       `/api/h2os/companions/${encodeURIComponent(id)}/channels/weixin?request_id=${encodeURIComponent(requestId)}`,
       { method: "DELETE" },
     ),
+  getCompanionRuntime: (id: string) =>
+    fetchJSON<CompanionRuntime>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/runtime`,
+    ),
+  restartCompanionRuntime: (id: string) =>
+    fetchJSON<{ ok: boolean; pid: number; reused: boolean }>(
+      `/api/h2os/companions/${encodeURIComponent(id)}/runtime/restart`,
+      { method: "POST" },
+    ),
 
   // Skills & Toolsets
   //
@@ -2616,6 +2625,14 @@ export interface CompanionWeixinSession {
   companion?: Companion;
   gateway_restart_started?: boolean;
   gateway_restart_error?: string;
+}
+
+export interface CompanionRuntime {
+  companion_id: string;
+  profile_name: string;
+  channel?: string | null;
+  gateway_running: boolean;
+  terminal_command: string;
 }
 
 // ── Dashboard theme types ──────────────────────────────────────────────
