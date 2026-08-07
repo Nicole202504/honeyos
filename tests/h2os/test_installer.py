@@ -33,7 +33,7 @@ def test_installer_bootstraps_uv_then_runs_setup(tmp_path):
         }
     )
     result = subprocess.run(
-        ["/bin/sh", str(repo / "scripts" / "install_h2os.sh")],
+        ["/bin/sh", str(repo / "scripts" / "install_honey_os.sh")],
         cwd=repo,
         env=env,
         text=True,
@@ -43,6 +43,6 @@ def test_installer_bootstraps_uv_then_runs_setup(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert log.read_text(encoding="utf-8").splitlines() == [
-        "sync --extra h2os",
-        "run h2os setup",
+        "sync --quiet --extra h2os",
+        "run honey-os setup",
     ]

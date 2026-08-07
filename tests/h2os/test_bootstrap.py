@@ -25,10 +25,12 @@ def test_activate_h2os_home_sets_absolute_environment(monkeypatch, tmp_path):
     monkeypatch.delenv("HERMES_HOME", raising=False)
     monkeypatch.delenv("H2OS_HOME", raising=False)
     monkeypatch.delenv("H2OS_RUNTIME_ID", raising=False)
+    monkeypatch.delenv("H2OS_PRODUCT_NAME", raising=False)
 
     result = activate_h2os_home(tmp_path / "data")
 
     assert os.environ["HERMES_HOME"] == str(result)
     assert os.environ["H2OS_HOME"] == str(result)
     assert os.environ["H2OS_RUNTIME_ID"] == "h2os-companion-v0.2"
+    assert os.environ["H2OS_PRODUCT_NAME"] == "Honey OS"
     assert result.is_absolute()

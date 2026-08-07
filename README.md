@@ -1,10 +1,10 @@
-# H2OS：住在你微信里的私人 AI 伴侣
+# Honey OS：住在你微信里的私人 AI 伴侣
 
-H2OS 是一套本地运行、通过微信陪伴你的单用户 AI Agent。它会逐渐形成自己的名字、性格和相处方式，也能记住双方确认过的关系、偏好、约定与共同经历。
+Honey OS 是一套本地运行、通过微信陪伴你的单用户 AI Agent。它会逐渐形成自己的名字、性格和相处方式，也能记住双方确认过的关系、偏好、约定与共同经历。
 
 它不只是聊天角色，还可以在用户授权的能力范围内搜索网页、管理文件、运行隔离代码、安装普通 Skill、建立待办和定时任务。模型 API Key、微信凭据和伴侣记忆都保存在用户自己的电脑上。
 
-> 当前版本适合受邀的小范围体验。每套 H2OS 只服务一位用户，请勿让多个用户共用同一个安装实例。
+> 当前版本适合受邀的小范围体验。每套 Honey OS 只服务一位用户，请勿让多个用户共用同一个安装实例。
 
 ## 开始前准备
 
@@ -21,15 +21,15 @@ H2OS 是一套本地运行、通过微信陪伴你的单用户 AI Agent。它会
 1. 登录已获邀请的 GitHub 账号，打开本仓库。
 2. 点击绿色的 **Code**，选择 **Download ZIP**。
 3. 解压下载的文件。
-4. 双击根目录中的 **Install-H2OS.command**。
+4. 双击根目录中的 **Install-Honey-OS.command**。
 5. 如果 macOS 阻止打开：右键该文件，选择 **打开**，再次确认。
 
-安装器会自动准备 H2OS 所需的 Python 运行环境和依赖，不需要用户预先安装 Python 或 `uv`。
+安装器会自动准备 Honey OS 所需的 Python 运行环境和依赖，不需要用户预先安装 Python 或 `uv`。
 
 如果双击仍无法运行，打开“终端”，把解压后的文件夹拖进终端，然后执行：
 
 ```bash
-/bin/sh scripts/install_h2os.sh
+/bin/sh scripts/install_honey_os.sh
 ```
 
 熟悉 Git 的用户也可以使用：
@@ -37,7 +37,7 @@ H2OS 是一套本地运行、通过微信陪伴你的单用户 AI Agent。它会
 ```bash
 git clone https://github.com/Nicole202504/test_ai_0806.git
 cd test_ai_0806
-/bin/sh scripts/install_h2os.sh
+/bin/sh scripts/install_honey_os.sh
 ```
 
 ## 首次设置会经历什么
@@ -53,7 +53,7 @@ Model ID：服务商提供的模型 ID
 API Key：输入时终端不会显示字符，这是正常现象
 ```
 
-H2OS 会真的向所选模型发送一条极小的测试消息。只有 API Key、模型和 OpenAI Chat Completions 返回格式都可用，才会继续连接微信。这可以提前拦截“能访问 `/models`，实际却无法聊天”的假兼容接口。
+Honey OS 会真的向所选模型发送一条极小的测试消息。只有 API Key、模型和 OpenAI Chat Completions 返回格式都可用，才会继续连接微信。这可以提前拦截“能访问 `/models`，实际却无法聊天”的假兼容接口。
 
 ### 2. 连接微信
 
@@ -61,7 +61,7 @@ H2OS 会真的向所选模型发送一条极小的测试消息。只有 API Key�
 
 1. 用手机微信扫码。
 2. 在手机上确认登录。
-3. H2OS 自动把扫码人设为唯一允许私聊的用户。
+3. Honey OS 自动把扫码人设为唯一允许私聊的用户。
 4. 群聊默认关闭，不需要再输入配对码。
 
 这里连接的是一个微信 iLink Bot 身份，不会控制或读取用户的普通个人微信聊天。
@@ -80,7 +80,7 @@ Docker、Computer Use 缺失只会显示黄色提醒，不影响微信聊天、�
 看到下面这句话即可回到微信：
 
 ```text
-✓ H2OS 已启动，现在可以去微信聊天。
+✓ Honey OS 已启动，现在可以去微信聊天。
 ```
 
 第一次可以直接发送：
@@ -114,32 +114,32 @@ Docker、Computer Use 缺失只会显示黄色提醒，不影响微信聊天、�
 - 当前对话窗口里的临时上下文。
 - 未保存的临时任务状态和工具运行状态。
 
-当用户提到“上次”“之前的约定”时，H2OS 可以搜索旧会话核实。只在聊天里随口出现、没有保存为长期记忆的内容，不保证在 `/new` 后自动出现。
+当用户提到“上次”“之前的约定”时，Honey OS 可以搜索旧会话核实。只在聊天里随口出现、没有保存为长期记忆的内容，不保证在 `/new` 后自动出现。
 
 ## 常用管理命令
 
-在解压后的 H2OS 文件夹中运行：
+在解压后的 Honey OS 文件夹中运行：
 
 ```bash
-uv run h2os status
-uv run h2os doctor
-uv run h2os logs
-uv run h2os restart
-uv run h2os stop
-uv run h2os start
+uv run honey-os status
+uv run honey-os doctor
+uv run honey-os logs
+uv run honey-os restart
+uv run honey-os stop
+uv run honey-os start
 ```
 
 重新填写模型或重新扫码：
 
 ```bash
-uv run h2os setup
+uv run honey-os setup
 ```
 
 升级到 `main` 最新版本（仅限 Git 安装）：
 
 ```bash
 git pull origin main
-/bin/sh scripts/install_h2os.sh
+/bin/sh scripts/install_honey_os.sh
 ```
 
 升级不会覆盖已有的人设、关系记忆、聊天历史、Skill 或微信凭据。
@@ -154,7 +154,7 @@ git pull origin main
 
 其中包括配置、微信凭据、伴侣记忆、会话历史、Skill 和日志。API Key 与微信凭据不会写进 Git 仓库。
 
-卸载代码不会自动删除 `~/.h2os`，所以重新下载代码仍可继续使用原来的伴侣。若需要彻底清除数据，应先停止 H2OS，再由用户本人确认后删除该目录。
+卸载代码不会自动删除 `~/.h2os`，所以重新下载代码仍可继续使用原来的伴侣。若需要彻底清除数据，应先停止 Honey OS，再由用户本人确认后删除该目录。
 
 ## 体验反馈建议
 
@@ -166,8 +166,8 @@ git pull origin main
 - 网页搜索、文件、Skill、待办和定时任务是否能完成。
 - 失败时的提示是否让普通用户知道下一步怎么做。
 
-反馈问题时请附上问题发生时间和 `uv run h2os doctor` 的结果，不要发送 API Key、微信 Token 或整个 `~/.h2os` 目录。
+反馈问题时请附上问题发生时间和 `uv run honey-os doctor` 的结果，不要发送 API Key、微信 Token 或整个 `~/.h2os` 目录。
 
 ## 项目来源
 
-H2OS 基于 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 的开源代码重新设计为单伴侣运行时，并保留原项目的 MIT License 与版权声明。H2OS 使用独立命令、独立数据目录、精简工具集和伴侣专用记忆策略，不会被本机已有 Hermes 实例识别为同一套运行数据。
+Honey OS 基于 [Nous Research 的开源 Agent Runtime](https://github.com/NousResearch/hermes-agent) 重新设计为单伴侣运行时，并保留原项目的 MIT License 与版权声明。Honey OS 使用独立命令、独立数据目录、精简工具集和伴侣专用记忆策略，不会与本机已有的上游运行实例共用数据。

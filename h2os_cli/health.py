@@ -10,6 +10,8 @@ from typing import Callable
 
 import yaml
 
+from h2os_cli import PRODUCT_NAME
+
 
 @dataclass(frozen=True)
 class HealthItem:
@@ -28,7 +30,7 @@ class FirstStartReport:
         return all(item.ready for item in self.items if item.required)
 
     def render(self) -> str:
-        lines = ["H2OS 首次启动检查"]
+        lines = [f"{PRODUCT_NAME} 首次启动检查"]
         for item in self.items:
             if item.ready:
                 lines.append(f"✓ {item.success}")

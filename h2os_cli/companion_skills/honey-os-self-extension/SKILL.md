@@ -1,20 +1,20 @@
 ---
-name: h2os-self-extension
+name: honey-os-self-extension
 description: "检查真实能力，并按用户需要安全地安装或创建 Skill。"
 version: 1.0.0
-author: H2OS
+author: Honey OS
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
-    tags: [h2os, skills, capability, extension]
+    tags: [honey-os, skills, capability, extension]
     category: companion
     requires_toolsets: [skills, terminal]
 ---
 
-# H2OS Self Extension Skill
+# Honey OS Self Extension Skill
 
-让 H2OS 在能力不足时先检查现状，再选择已有工具、安装普通 Skill 或创建小型 Skill。它扩展边缘能力，不改写核心 Runtime、安全边界或伴侣数据规则。
+让 Honey OS 在能力不足时先检查现状，再选择已有工具、安装普通 Skill 或创建小型 Skill。它扩展边缘能力，不改写核心 Runtime、安全边界或伴侣数据规则。
 
 ## When to Use
 
@@ -53,7 +53,7 @@ metadata:
 - 不说“只能从内置市场安装”；公开仓库可以先读取和评估。
 - 不把 GitHub 项目直接等同于可安装 Skill。
 - 不运行任意远程脚本，不保存秘密，不绕过隔离环境。
-- 不为了扩展能力修改 H2OS 核心代码。
+- 不为了扩展能力修改 Honey OS 核心代码。
 
 ## Verification
 

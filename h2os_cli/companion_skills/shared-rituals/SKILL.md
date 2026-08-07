@@ -2,7 +2,7 @@
 name: shared-rituals
 description: "建立双方同意的问候、提醒、纪念日与陪伴仪式。"
 version: 1.0.0
-author: H2OS
+author: Honey OS
 license: MIT
 platforms: [linux, macos, windows]
 metadata:

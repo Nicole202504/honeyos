@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from h2os_cli import PRODUCT_NAME
 from h2os_cli.config import COMPANION_TOOLSETS
 from h2os_cli.runtime import gateway_argv
 
@@ -35,7 +36,7 @@ class DoctorReport:
         raise KeyError(name)
 
     def render(self) -> str:
-        lines = ["H2OS doctor"]
+        lines = [f"{PRODUCT_NAME} doctor"]
         for check in self.checks:
             mark = "✓" if check.ok else "✗"
             lines.append(f"{mark} {check.name}: {check.detail}")
@@ -106,7 +107,9 @@ def run_doctor(home: Path) -> DoctorReport:
         DoctorCheck(
             "runtime-isolated",
             runtime_ok,
-            "absolute H2OS runtime recorded" if runtime_ok else "runtime.json missing or invalid",
+            f"absolute {PRODUCT_NAME} runtime recorded"
+            if runtime_ok
+            else "runtime.json missing or invalid",
         ),
         DoctorCheck(
             "companion-mode",

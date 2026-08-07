@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from h2os_cli import RUNTIME_ID, __version__
+from h2os_cli import PRODUCT_NAME, RUNTIME_ID, __version__
 
 
 UPSTREAM_COMMIT = "6e9cae6ac4b41b5325d3ef8bdce5ed8e6fd9b28a"
@@ -90,6 +90,7 @@ def run_gateway_command(
     environment["H2OS_HOME"] = str(resolved)
     environment["HERMES_HOME"] = str(resolved)
     environment["H2OS_RUNTIME_ID"] = RUNTIME_ID
+    environment["H2OS_PRODUCT_NAME"] = PRODUCT_NAME
     completed = subprocess.run(
         gateway_argv(command, arguments), env=environment, check=False
     )
@@ -104,6 +105,7 @@ def run_hermes_module(arguments: list[str], *, home: Path) -> int:
     environment["H2OS_HOME"] = str(resolved)
     environment["HERMES_HOME"] = str(resolved)
     environment["H2OS_RUNTIME_ID"] = RUNTIME_ID
+    environment["H2OS_PRODUCT_NAME"] = PRODUCT_NAME
     completed = subprocess.run(
         hermes_module_argv(*arguments), env=environment, check=False
     )

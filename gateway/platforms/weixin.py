@@ -35,6 +35,17 @@ logger = logging.getLogger(__name__)
 
 WEIXIN_COPY_LINE_WIDTH = 120
 
+
+def _productize_outbound_text(content: str) -> str:
+    """Hide inherited product names on the Honey OS Weixin surface."""
+
+    if not os.environ.get("H2OS_RUNTIME_ID", "").startswith("h2os-companion-"):
+        return content
+    branded = content.replace("`hermes ", "`honey-os ")
+    branded = branded.replace("Hermes Agent", "Honey OS")
+    branded = branded.replace("Hermes", "Honey OS")
+    return branded.replace("H2OS", "Honey OS")
+
 try:
     import aiohttp
 
@@ -1885,6 +1896,7 @@ class WeixinAdapter(BasePlatformAdapter):
     ) -> SendResult:
         if not self._send_session or not self._token:
             return SendResult(success=False, error="Not connected")
+        content = _productize_outbound_text(content)
         context_token = self._token_store.get(self._account_id, chat_id)
         last_message_id: Optional[str] = None
 

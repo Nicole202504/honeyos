@@ -87,6 +87,20 @@ _GATEWAY_PROXY_SSE_BUFFER_MAX_CHARS = 16 * 1024 * 1024
 _TELEGRAM_COMMAND_MENTION_RE = re.compile(r"(?<![\w:/])/([A-Za-z0-9][A-Za-z0-9_-]*)")
 _GATEWAY_HYGIENE_PLATFORM = "gateway_hygiene"
 
+
+def _is_h2os_runtime() -> bool:
+    return os.environ.get("H2OS_RUNTIME_ID", "").startswith("h2os-companion-")
+
+
+def _gateway_product_name() -> str:
+    if _is_h2os_runtime():
+        return os.environ.get("H2OS_PRODUCT_NAME", "Honey OS").strip() or "Honey OS"
+    return "Hermes"
+
+
+def _pairing_cli_prefix() -> str:
+    return "honey-os" if _is_h2os_runtime() else "hermes"
+
 _TELEGRAM_NOISY_STATUS_RE = re.compile(
     r"("  # transient/auxiliary status that should stay in logs, not gateway chats
     r"auxiliary\s+.+\s+failed"
@@ -10667,11 +10681,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         
         Returns True if at least one adapter connected successfully.
         """
-        product_name = (
-            "H2OS"
-            if os.environ.get("H2OS_RUNTIME_ID", "").startswith("h2os-companion-")
-            else "Hermes"
-        )
+        product_name = _gateway_product_name()
         logger.info("Starting %s Gateway...", product_name)
         # Enable faulthandler for stack dumps on freezes/crashes (#70344).
         # Falls back to a log file when sys.stderr is None (Windows VBS /
@@ -14500,7 +14510,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                             f"Hi~ I don't recognize you yet!\n\n"
                             f"Here's your pairing code: `{code}`\n\n"
                             f"Ask the bot owner to run:\n"
-                            f"`hermes {profile_arg}pairing approve "
+                            f"`{_pairing_cli_prefix()} {profile_arg}pairing approve "
                             f"{platform_name} {code}`"
                         )
                 else:

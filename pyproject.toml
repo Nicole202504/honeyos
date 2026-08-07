@@ -361,6 +361,7 @@ hermes = "hermes_cli.main:main"
 hermes-agent = "run_agent:main"
 hermes-acp = "acp_adapter.entry:main"
 h2os = "h2os_cli.main:main"
+honey-os = "h2os_cli.main:main"
 
 [tool.uv]
 override-dependencies = [

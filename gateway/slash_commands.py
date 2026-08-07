@@ -56,6 +56,19 @@ logger = logging.getLogger("gateway.run")
 _RESET_CLEANUP_TIMEOUT_S = 30.0
 
 
+def _reset_tip_line() -> str:
+    """Return only product-safe reset tips for the active runtime."""
+
+    if os.environ.get("H2OS_RUNTIME_ID", "").startswith("h2os-companion-"):
+        return ""
+    try:
+        from hermes_cli.tips import get_random_tip
+
+        return t("gateway.reset.tip", tip=get_random_tip())
+    except Exception:
+        return ""
+
+
 def _clean_str(value: Any) -> str:
     """Strip and return a non-empty string value, or empty string."""
     return value.strip() if isinstance(value, str) and value.strip() else ""
@@ -315,11 +328,7 @@ class GatewaySlashCommandsMixin:
             pass
 
         # Append a random tip to the reset message
-        try:
-            from hermes_cli.tips import get_random_tip
-            _tip_line = t("gateway.reset.tip", tip=get_random_tip())
-        except Exception:
-            _tip_line = ""
+        _tip_line = _reset_tip_line()
 
         if session_info:
             return EphemeralReply(f"{header}\n\n{session_info}{_tip_line}")

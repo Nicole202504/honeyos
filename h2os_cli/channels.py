@@ -6,6 +6,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from h2os_cli import PRODUCT_NAME
 from h2os_cli.bootstrap import activate_h2os_home
 
 
@@ -13,7 +14,7 @@ def setup_weixin(home: Path) -> int:
     """Connect one scanner to one private H2OS instance via Weixin QR login."""
 
     resolved = activate_h2os_home(home)
-    print(f"H2OS 微信连接 · 数据只保存在 {resolved}")
+    print(f"{PRODUCT_NAME} 微信连接 · 数据只保存在 {resolved}")
     print("请用微信扫描终端中的二维码，并在手机上确认。")
     try:
         from gateway.platforms.weixin import check_weixin_requirements, qr_login
@@ -48,10 +49,10 @@ def setup_weixin(home: Path) -> int:
         save_env_value("WEIXIN_GROUP_ALLOWED_USERS", "")
         save_env_value("WEIXIN_HOME_CHANNEL", user_id)
     except KeyboardInterrupt:
-        print("H2OS 微信连接已取消。", file=sys.stderr)
+        print(f"{PRODUCT_NAME} 微信连接已取消。", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"H2OS 微信连接失败：{exc}", file=sys.stderr)
+        print(f"{PRODUCT_NAME} 微信连接失败：{exc}", file=sys.stderr)
         return 1
     print("✓ 微信已连接，并且只允许扫码本人私聊；群聊默认关闭。")
     return 0

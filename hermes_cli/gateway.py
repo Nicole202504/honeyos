@@ -1758,11 +1758,17 @@ def _is_h2os_runtime() -> bool:
 
 
 def _service_description() -> str:
-    return "H2OS Companion Gateway" if _is_h2os_runtime() else SERVICE_DESCRIPTION
+    return (
+        f"{_service_product_name()} Companion Gateway"
+        if _is_h2os_runtime()
+        else SERVICE_DESCRIPTION
+    )
 
 
 def _service_product_name() -> str:
-    return "H2OS" if _is_h2os_runtime() else "Hermes"
+    if _is_h2os_runtime():
+        return os.environ.get("H2OS_PRODUCT_NAME", "Honey OS").strip() or "Honey OS"
+    return "Hermes"
 
 
 def _profile_suffix() -> str:
@@ -2929,6 +2935,7 @@ Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
 {f'Environment="H2OS_HOME={hermes_home}"' if _is_h2os_runtime() else ''}
 {f'Environment="H2OS_RUNTIME_ID={os.environ.get("H2OS_RUNTIME_ID", "h2os-companion-v0.1")}"' if _is_h2os_runtime() else ''}
+{f'Environment="H2OS_PRODUCT_NAME={_service_product_name()}"' if _is_h2os_runtime() else ''}
 Restart=always
 RestartSec=5
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
@@ -2969,6 +2976,7 @@ Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
 {f'Environment="H2OS_HOME={hermes_home}"' if _is_h2os_runtime() else ''}
 {f'Environment="H2OS_RUNTIME_ID={os.environ.get("H2OS_RUNTIME_ID", "h2os-companion-v0.1")}"' if _is_h2os_runtime() else ''}
+{f'Environment="H2OS_PRODUCT_NAME={_service_product_name()}"' if _is_h2os_runtime() else ''}
 Restart=always
 RestartSec=5
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
@@ -3175,7 +3183,8 @@ def refresh_systemd_unit_if_needed(system: bool = False) -> bool:
     unit_path.write_text(new_unit, encoding="utf-8")
     _run_systemctl(["daemon-reload"], system=system, check=True, timeout=30)
     print(
-        f"↻ Updated gateway {_service_scope_label(system)} service definition to match the current Hermes install"
+        f"↻ Updated gateway {_service_scope_label(system)} service definition "
+        f"to match the current {_service_product_name()} install"
     )
     return True
 
@@ -4143,7 +4152,9 @@ def generate_launchd_plist() -> str:
         {f'''<key>H2OS_HOME</key>
         <string>{hermes_home}</string>
         <key>H2OS_RUNTIME_ID</key>
-        <string>{os.environ.get("H2OS_RUNTIME_ID", "h2os-companion-v0.1")}</string>''' if _is_h2os_runtime() else ''}
+        <string>{os.environ.get("H2OS_RUNTIME_ID", "h2os-companion-v0.1")}</string>
+        <key>H2OS_PRODUCT_NAME</key>
+        <string>{_service_product_name()}</string>''' if _is_h2os_runtime() else ''}
     </dict>
 
     <key>LimitLoadToSessionType</key>
@@ -4670,7 +4681,10 @@ def launchd_status(deep: bool = False):
     launchd_unsupported = _launchd_unsupported_marker_exists()
 
     # ── Report ──
-    print(f"Launchd plist: {plist_path}")
+    if _is_h2os_runtime():
+        print(f"{_service_product_name()} background service")
+    else:
+        print(f"Launchd plist: {plist_path}")
     if launchd_plist_is_current():
         print(
             "✓ Service definition matches the current "
@@ -4681,7 +4695,7 @@ def launchd_status(deep: bool = False):
             "⚠ Service definition is stale relative to the current "
             f"{_service_product_name()} install"
         )
-        command = "h2os start" if _is_h2os_runtime() else "hermes gateway start"
+        command = "honey-os start" if _is_h2os_runtime() else "hermes gateway start"
         print(f"  Run: {command}")
 
     if service_listed:
@@ -4695,10 +4709,13 @@ def launchd_status(deep: bool = False):
             print("  launchd cannot manage the gateway on this macOS version.")
             if fallback_pid:
                 print(f"✓ Detached fallback process is running (PID {fallback_pid})")
-                print("  Cron jobs will fire. Stop with: hermes gateway stop")
+                stop_command = (
+                    "honey-os stop" if _is_h2os_runtime() else "hermes gateway stop"
+                )
+                print(f"  Cron jobs will fire. Stop with: {stop_command}")
             else:
                 print("✗ No fallback process is running")
-                command = "h2os start" if _is_h2os_runtime() else "hermes gateway start"
+                command = "honey-os start" if _is_h2os_runtime() else "hermes gateway start"
                 print(f"  Run: {command}")
             print("  ⚠ Auto-start at login and auto-restart on crash are NOT available.")
         else:
@@ -4709,7 +4726,7 @@ def launchd_status(deep: bool = False):
     else:
         print("✗ Gateway service is not loaded")
         print("  Service definition exists locally but launchd has not loaded it.")
-        command = "h2os start" if _is_h2os_runtime() else "hermes gateway start"
+        command = "honey-os start" if _is_h2os_runtime() else "hermes gateway start"
         print(f"  Run: {command}")
         if fallback_pid:
             print(f"  Note: a detached gateway process is running (PID {fallback_pid})")
@@ -5889,10 +5906,10 @@ def _is_service_running() -> bool:
 def _setup_weixin():
     """Interactive setup for Weixin / WeChat personal accounts."""
     h2os_mode = bool(os.environ.get("H2OS_RUNTIME_ID"))
-    product_name = "H2OS" if h2os_mode else "Hermes"
+    product_name = _service_product_name()
     data_home = str(get_hermes_home()) if h2os_mode else "~/.hermes"
-    retry_command = "h2os channel setup weixin" if h2os_mode else "hermes gateway setup"
-    pairing_command = "h2os pairing approve" if h2os_mode else "hermes pairing approve"
+    retry_command = "honey-os channel setup weixin" if h2os_mode else "hermes gateway setup"
+    pairing_command = "honey-os pairing approve" if h2os_mode else "hermes pairing approve"
     print()
     print(color("  ─── 💬 Weixin / WeChat Setup ───", Colors.CYAN))
     print()

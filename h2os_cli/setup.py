@@ -14,6 +14,8 @@ from typing import Callable
 
 import yaml
 
+from h2os_cli import PRODUCT_NAME
+
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 RECOMMENDED_OPENROUTER_MODEL = "z-ai/glm-5.2"
@@ -196,7 +198,7 @@ def run_setup(
 
         ready_check_fn = print_first_start_report
 
-    print("H2OS 设置：Base URL / 模型 / API Key → 微信 → 启动")
+    print(f"{PRODUCT_NAME} 设置：Base URL / 模型 / API Key → 微信 → 启动")
     try:
         choice = _choose_model(input_fn)
         api_key = secret_fn("API Key（输入不会显示）: ").strip()
@@ -208,7 +210,7 @@ def run_setup(
         print(f"✓ 模型已连接：{choice.model}")
     except (ValueError, KeyboardInterrupt) as exc:
         message = str(exc) if str(exc) else "设置已取消"
-        print(f"H2OS 设置失败：{message}", file=os.sys.stderr)
+        print(f"{PRODUCT_NAME} 设置失败：{message}", file=os.sys.stderr)
         return 1
 
     if _has_weixin_credentials(resolved):
@@ -231,7 +233,10 @@ def run_setup(
     started = gateway_run_fn("start", home=resolved)
     if started == 0:
         if not ready_check_fn(resolved):
-            print("H2OS 首次启动检查未通过，请按上面的提示处理。", file=os.sys.stderr)
+            print(
+                f"{PRODUCT_NAME} 首次启动检查未通过，请按上面的提示处理。",
+                file=os.sys.stderr,
+            )
             return 1
-        print("✓ H2OS 已启动，现在可以去微信聊天。")
+        print(f"✓ {PRODUCT_NAME} 已启动，现在可以去微信聊天。")
     return started

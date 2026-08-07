@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+
 import yaml
 
 import h2os_cli.config as config_module
@@ -68,7 +70,7 @@ def test_initialize_home_creates_companion_contract(tmp_path):
         "emotional-repair",
         "celebration-and-surprise",
         "date-and-life-ideas",
-        "h2os-self-extension",
+        "honey-os-self-extension",
         "maps",
         "youtube-content",
         "ocr-and-documents",
@@ -141,3 +143,40 @@ def test_upgrade_companion_capabilities_is_idempotent_and_preserves_user_state(t
     assert first_soul.startswith("# My formed identity")
     assert first_soul.count("# Capability Growth") == 1
     assert (tmp_path / "skills" / "relationship-continuity" / "SKILL.md").exists()
+
+
+def test_upgrade_migrates_legacy_product_brand_without_touching_identity(tmp_path):
+    initialize_home(tmp_path)
+    soul_path = tmp_path / "SOUL.md"
+    soul_path.write_text(
+        "# My formed identity\n\nKeep me.\n\n不得修改 H2OS 核心 Runtime。\n",
+        encoding="utf-8",
+    )
+    old_skill = tmp_path / "skills" / "h2os-self-extension"
+    new_skill = tmp_path / "skills" / "honey-os-self-extension"
+    shutil.copytree(new_skill, old_skill)
+    for relative in ("SKILL.md", "agents/openai.yaml"):
+        path = old_skill / relative
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("Honey OS", "H2OS"),
+            encoding="utf-8",
+        )
+    with (old_skill / "SKILL.md").open("a", encoding="utf-8") as handle:
+        handle.write("\nPreserve this user customization.\n")
+
+    changed = config_module.upgrade_companion_capabilities(tmp_path)
+
+    assert changed is True
+    assert "Keep me." in soul_path.read_text(encoding="utf-8")
+    assert "你运行在 Honey OS" in soul_path.read_text(encoding="utf-8")
+    assert "Honey OS" in soul_path.read_text(encoding="utf-8")
+    assert "H2OS" not in soul_path.read_text(encoding="utf-8")
+    assert new_skill.is_dir()
+    assert not old_skill.exists()
+    assert "H2OS" not in (new_skill / "SKILL.md").read_text(encoding="utf-8")
+    assert "Preserve this user customization." in (new_skill / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "H2OS" not in (new_skill / "agents" / "openai.yaml").read_text(
+        encoding="utf-8"
+    )

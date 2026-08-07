@@ -10,25 +10,28 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from h2os_cli import PRODUCT_NAME
 from h2os_cli.bootstrap import activate_h2os_home, resolve_h2os_home
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="h2os",
-        description="Run your private H2OS AI companion.",
+        prog="honey-os",
+        description=f"Run your private {PRODUCT_NAME} AI companion.",
         exit_on_error=False,
     )
     parser.add_argument("--home", help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("setup", help="Set up model, Weixin, and start H2OS")
+    subparsers.add_parser(
+        "setup", help=f"Set up model, Weixin, and start {PRODUCT_NAME}"
+    )
     subparsers.add_parser("init", help="Initialize the private companion")
     subparsers.add_parser("start", help="Start the background message service")
     subparsers.add_parser("stop", help="Stop the background message service")
     subparsers.add_parser("restart", help="Restart the background message service")
     subparsers.add_parser("status", help="Show companion status")
-    subparsers.add_parser("logs", help="Show H2OS logs")
-    subparsers.add_parser("doctor", help="Check the H2OS installation")
+    subparsers.add_parser("logs", help=f"Show {PRODUCT_NAME} logs")
+    subparsers.add_parser("doctor", help=f"Check the {PRODUCT_NAME} installation")
     channel = subparsers.add_parser("channel", help="Configure the chat channel")
     channel_commands = channel.add_subparsers(dest="channel_command", required=True)
     channel_setup = channel_commands.add_parser("setup", help="Connect a chat channel")
@@ -61,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = parser.parse_args(list(argv) if argv is not None else None)
     except argparse.ArgumentError as exc:
-        print(f"h2os: error: {exc}", file=sys.stderr)
+        print(f"honey-os: error: {exc}", file=sys.stderr)
         return 2
     except SystemExit as exc:
         return int(exc.code or 0)
@@ -71,7 +74,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "init":
         result, _identity = _initialize(home)
         suffix = "initialized" if result.created else "already initialized"
-        print(f"H2OS {suffix}: {home}")
+        print(f"{PRODUCT_NAME} {suffix}: {home}")
         return 0
 
     if args.command == "setup":
@@ -86,7 +89,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             from h2os_cli.channels import setup_weixin
 
             return setup_weixin(home)
-        print("h2os: error: unsupported channel command", file=sys.stderr)
+        print("honey-os: error: unsupported channel command", file=sys.stderr)
         return 2
 
     from h2os_cli.runtime import run_gateway_command, run_hermes_module
@@ -115,11 +118,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             from h2os_cli.doctor import print_doctor
         except ImportError:
-            print("H2OS doctor is not available in this build.", file=sys.stderr)
+            print(f"{PRODUCT_NAME} doctor is not available in this build.", file=sys.stderr)
             return 1
         return print_doctor(home)
 
-    print(f"h2os: error: unknown command {args.command!r}", file=sys.stderr)
+    print(f"honey-os: error: unknown command {args.command!r}", file=sys.stderr)
     return 2
 
 

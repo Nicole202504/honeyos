@@ -12,6 +12,8 @@ from pathlib import Path
 
 import yaml
 
+from h2os_cli import PRODUCT_NAME
+
 
 _SUPPORTED_PLATFORMS = frozenset({"weixin"})
 
@@ -42,7 +44,7 @@ _COMPANION_SKILLS = (
     ("emotional-repair", "h2os", None),
     ("celebration-and-surprise", "h2os", None),
     ("date-and-life-ideas", "h2os", None),
-    ("h2os-self-extension", "h2os", None),
+    ("honey-os-self-extension", "h2os", None),
     ("maps", "productivity", None),
     ("youtube-content", "media", None),
     ("ocr-and-documents", "productivity", None),
@@ -111,7 +113,7 @@ def companion_config(platform: str = "weixin") -> dict:
 
     normalized = platform.strip().lower()
     if normalized not in _SUPPORTED_PLATFORMS:
-        raise ValueError("H2OS v0.2 supports the weixin platform only")
+        raise ValueError(f"{PRODUCT_NAME} v0.2 supports the weixin platform only")
 
     return {
         "agent": {
@@ -203,7 +205,7 @@ def initialize_home(home: Path, *, platform: str = "weixin") -> InitResult:
         (resolved / "memories" / "RELATIONSHIP.md", "", 0o600),
         (
             resolved / ".no-bundled-skills",
-            "Managed by H2OS. Bundled Hermes skills are disabled.\n",
+            f"Managed by {PRODUCT_NAME}. Upstream bundled skills are disabled.\n",
             0o644,
         ),
     )
@@ -279,11 +281,31 @@ def upgrade_companion_capabilities(home: Path) -> bool:
         if _create_file(resolved / "memories" / filename, "", mode=0o600):
             changed = True
 
+    old_skill = resolved / "skills" / "h2os-self-extension"
+    new_skill = resolved / "skills" / "honey-os-self-extension"
+    if old_skill.is_dir():
+        if new_skill.exists():
+            shutil.rmtree(new_skill)
+        old_skill.rename(new_skill)
+        changed = True
+
     if seed_companion_skills(resolved):
         changed = True
 
     soul_path = resolved / "SOUL.md"
     soul = soul_path.read_text(encoding="utf-8") if soul_path.exists() else ""
+    branded_soul = soul.replace("H2OS", PRODUCT_NAME)
+    if "你运行在 Honey OS" not in branded_soul:
+        identity_line = "你运行在 Honey OS；这是产品身份，不覆盖用户已经形成的伴侣人设。"
+        if branded_soul.startswith("#") and "\n" in branded_soul:
+            heading, _separator, body = branded_soul.partition("\n")
+            branded_soul = f"{heading}\n\n{identity_line}\n\n{body.lstrip()}"
+        else:
+            branded_soul = f"{identity_line}\n\n{branded_soul.lstrip()}"
+    if branded_soul != soul:
+        soul = branded_soul
+        _atomic_replace(soul_path, soul, mode=0o644)
+        changed = True
     template = (
         Path(__file__).parent / "templates" / "companion_soul.md"
     ).read_text(encoding="utf-8")
@@ -297,5 +319,32 @@ def upgrade_companion_capabilities(home: Path) -> bool:
         updated_soul = soul.rstrip() + "\n\n" + addition.strip() + "\n"
         _atomic_replace(soul_path, updated_soul, mode=0o644)
         changed = True
+
+    for skill_name, category, _command in _COMPANION_SKILLS:
+        if category != "h2os":
+            continue
+        for relative in ("SKILL.md", "agents/openai.yaml"):
+            skill_file = resolved / "skills" / skill_name / relative
+            if not skill_file.is_file():
+                continue
+            skill_text = skill_file.read_text(encoding="utf-8")
+            if "H2OS" in skill_text:
+                _atomic_replace(
+                    skill_file,
+                    skill_text.replace("H2OS", PRODUCT_NAME),
+                    mode=0o644,
+                )
+                changed = True
+
+    marker = resolved / ".no-bundled-skills"
+    if marker.is_file():
+        marker_text = marker.read_text(encoding="utf-8")
+        branded_marker = marker_text.replace("Managed by H2OS", f"Managed by {PRODUCT_NAME}")
+        branded_marker = branded_marker.replace(
+            "Bundled Hermes skills", "Upstream bundled skills"
+        )
+        if branded_marker != marker_text:
+            _atomic_replace(marker, branded_marker, mode=0o644)
+            changed = True
 
     return changed

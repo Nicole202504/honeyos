@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from h2os_cli import RUNTIME_ID
+from h2os_cli import PRODUCT_NAME, RUNTIME_ID
 
 
 def resolve_h2os_home(explicit: str | None = None) -> Path:
@@ -28,4 +28,5 @@ def activate_h2os_home(home: Path) -> Path:
     os.environ["H2OS_HOME"] = str(resolved)
     os.environ["HERMES_HOME"] = str(resolved)
     os.environ["H2OS_RUNTIME_ID"] = RUNTIME_ID
+    os.environ["H2OS_PRODUCT_NAME"] = PRODUCT_NAME
     return resolved
