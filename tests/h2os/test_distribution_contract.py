@@ -27,7 +27,7 @@ def test_h2os_install_extra_includes_free_web_search_backend():
     assert "ddgs==9.14.4" in pyproject["project"]["optional-dependencies"]["h2os"]
 
 
-def test_distribution_contract_exposes_growth_tools_without_work_agent_tools(tmp_path):
+def test_distribution_contract_exposes_companion_action_tools_without_orchestration(tmp_path):
     home = _home(tmp_path)
 
     definitions = resolved_companion_tool_definitions(home)
@@ -39,13 +39,12 @@ def test_distribution_contract_exposes_growth_tools_without_work_agent_tools(tmp
         "browser_navigate",
         "skills_list",
         "skill_manage",
+        "todo",
+        "cronjob",
     }.issubset(names)
     assert not {
         "delegate_task",
-        "todo",
-        "cronjob",
         "kanban_create",
-        "computer_use",
     }.intersection(names)
 
 

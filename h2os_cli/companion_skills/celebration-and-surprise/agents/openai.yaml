@@ -1,0 +1,4 @@
+interface:
+  display_name: "Celebration and Surprise"
+  short_description: "Plan meaningful celebrations and small surprises"
+  default_prompt: "Use this skill to prepare a celebration or thoughtful surprise."

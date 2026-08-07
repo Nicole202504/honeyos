@@ -172,6 +172,23 @@ def _build_companion_system_prompt_parts(
     if "session_search" in valid_tools:
         stable_parts.append(COMPANION_SESSION_SEARCH_GUIDANCE)
 
+    if any(name in valid_tools for name in {"skills_list", "skill_view", "skill_manage"}):
+        available_toolsets = {
+            toolset
+            for toolset in (
+                runtime_helpers.get_toolset_for_tool(tool_name)
+                for tool_name in valid_tools
+            )
+            if toolset
+        }
+        skills_prompt = runtime_helpers.build_skills_system_prompt(
+            available_tools=valid_tools,
+            available_toolsets=available_toolsets,
+            companion_mode=True,
+        )
+    else:
+        skills_prompt = ""
+
     platform_key = (agent.platform or "").lower().strip()
     default_hint = PLATFORM_HINTS.get(platform_key, "")
     effective_hint = _resolve_platform_hint(agent, platform_key, default_hint)
@@ -183,6 +200,22 @@ def _build_companion_system_prompt_parts(
         context_parts.append(system_message)
 
     volatile_parts: List[str] = []
+    for filename, heading in (
+        ("IDENTITY.md", "FORMED COMPANION IDENTITY"),
+        ("RELATIONSHIP.md", "CONFIRMED RELATIONSHIP CONTEXT"),
+    ):
+        try:
+            content = (
+                get_hermes_home() / "memories" / filename
+            ).read_text(encoding="utf-8").strip()
+        except OSError:
+            content = ""
+        if content:
+            volatile_parts.append(f"## {heading}\n{content[:8000]}")
+
+    if skills_prompt:
+        volatile_parts.append(skills_prompt)
+
     memory_store = getattr(agent, "_memory_store", None)
     if memory_store:
         if getattr(agent, "_memory_enabled", False):

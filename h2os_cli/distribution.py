@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -17,13 +18,12 @@ _REQUIRED_COMPANION_TOOL_NAMES = {
     "browser_navigate",
     "skills_list",
     "skill_manage",
+    "todo",
+    "cronjob",
 }
 _FORBIDDEN_WORK_TOOL_NAMES = {
     "delegate_task",
-    "todo",
-    "cronjob",
     "kanban_create",
-    "computer_use",
 }
 
 
@@ -34,11 +34,19 @@ def resolved_companion_tool_definitions(home: Path) -> list[dict]:
     from model_tools import _clear_tool_defs_cache, get_tool_definitions
 
     _clear_tool_defs_cache()
-    definitions = get_tool_definitions(
-        enabled_toolsets=list(COMPANION_TOOLSETS),
-        quiet_mode=True,
-        skip_tool_search_assembly=True,
-    )
+    previous_gateway_session = os.environ.get("HERMES_GATEWAY_SESSION")
+    os.environ["HERMES_GATEWAY_SESSION"] = "1"
+    try:
+        definitions = get_tool_definitions(
+            enabled_toolsets=list(COMPANION_TOOLSETS),
+            quiet_mode=True,
+            skip_tool_search_assembly=True,
+        )
+    finally:
+        if previous_gateway_session is None:
+            os.environ.pop("HERMES_GATEWAY_SESSION", None)
+        else:
+            os.environ["HERMES_GATEWAY_SESSION"] = previous_gateway_session
     return sorted(
         definitions,
         key=lambda item: item.get("function", {}).get("name", ""),

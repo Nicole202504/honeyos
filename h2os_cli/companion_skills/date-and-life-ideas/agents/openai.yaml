@@ -1,0 +1,4 @@
+interface:
+  display_name: "Date and Life Ideas"
+  short_description: "Suggest personal dates and shared activities"
+  default_prompt: "Use this skill to design dates or activities around the users context."

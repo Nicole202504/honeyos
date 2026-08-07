@@ -402,7 +402,7 @@ include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*",
 
 [tool.setuptools.package-data]
 hermes_cli = ["observability/schemas/*.json"]
-h2os_cli = ["templates/*.md"]
+h2os_cli = ["templates/*.md", "companion_skills/**/*.md", "companion_skills/**/*.yaml"]
 # gateway/assets/ ships status_phrases.yaml and the Telegram BotFather
 # screenshot. Without this, sealed venvs (uv2nix) silently lose both —
 # status phrases fall back to the tiny hardcoded set and the Telegram

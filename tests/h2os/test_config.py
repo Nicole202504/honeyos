@@ -30,6 +30,12 @@ def test_initialize_home_creates_companion_contract(tmp_path):
         "code_execution",
         "terminal",
         "skills",
+        "todo",
+        "cronjob",
+        "computer_use",
+        "vision",
+        "tts",
+        "image_gen",
     ]
     assert config["web"]["backend"] == "ddgs"
     assert config["terminal"]["backend"] == "docker"
@@ -48,9 +54,27 @@ def test_initialize_home_creates_companion_contract(tmp_path):
     assert config["platforms"]["weixin"]["extra"]["dm_policy"] == "pairing"
     assert config["platforms"]["weixin"]["extra"]["group_policy"] == "disabled"
     assert (tmp_path / ".no-bundled-skills").exists()
-    assert "私人 AI 伴侣" in (tmp_path / "SOUL.md").read_text(encoding="utf-8")
+    assert "亲密关系伴侣" in (tmp_path / "SOUL.md").read_text(encoding="utf-8")
     assert (tmp_path / "memories" / "USER.md").exists()
     assert (tmp_path / "memories" / "MEMORY.md").exists()
+    assert (tmp_path / "memories" / "IDENTITY.md").exists()
+    assert (tmp_path / "memories" / "RELATIONSHIP.md").exists()
+    seeded_skills = {
+        path.name for path in (tmp_path / "skills").iterdir() if path.is_dir()
+    }
+    assert {
+        "relationship-continuity",
+        "shared-rituals",
+        "emotional-repair",
+        "celebration-and-surprise",
+        "date-and-life-ideas",
+        "h2os-self-extension",
+        "maps",
+        "youtube-content",
+        "ocr-and-documents",
+        "grounded-citations",
+    }.issubset(seeded_skills)
+    assert "hermes-agent" not in seeded_skills
     assert result.home == tmp_path.resolve()
 
 
@@ -116,3 +140,4 @@ def test_upgrade_companion_capabilities_is_idempotent_and_preserves_user_state(t
     assert migrated["security"]["allow_proxy_fake_ips"] is True
     assert first_soul.startswith("# My formed identity")
     assert first_soul.count("# Capability Growth") == 1
+    assert (tmp_path / "skills" / "relationship-continuity" / "SKILL.md").exists()

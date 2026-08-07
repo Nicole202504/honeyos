@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import shutil
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +24,32 @@ COMPANION_TOOLSETS = (
     "code_execution",
     "terminal",
     "skills",
+    "todo",
+    "cronjob",
+    "computer_use",
+    "vision",
+    "tts",
+    "image_gen",
+)
+
+_LEGACY_MANAGED_SOUL_SHA256 = (
+    "5df20481e8fab3c260cfc37352ee5014c3b277a9e0a7248ac37df84f7e6000b9"
+)
+
+_COMPANION_SKILLS = (
+    ("relationship-continuity", "h2os", None),
+    ("shared-rituals", "h2os", None),
+    ("emotional-repair", "h2os", None),
+    ("celebration-and-surprise", "h2os", None),
+    ("date-and-life-ideas", "h2os", None),
+    ("h2os-self-extension", "h2os", None),
+    ("maps", "productivity", None),
+    ("youtube-content", "media", None),
+    ("ocr-and-documents", "productivity", None),
+    ("grounded-citations", "research", None),
+    ("computer-use", "autonomous-ai-agents", "cua-driver"),
+    ("apple-reminders", "apple", "remindctl"),
+    ("apple-notes", "apple", "memo"),
 )
 
 
@@ -28,6 +57,38 @@ COMPANION_TOOLSETS = (
 class InitResult:
     home: Path
     created: tuple[Path, ...]
+
+
+def _companion_skill_source(name: str, category: str) -> Path:
+    if category == "h2os":
+        return Path(__file__).parent / "companion_skills" / name
+    return Path(__file__).parents[1] / "skills" / category / name
+
+
+def seed_companion_skills(home: Path) -> tuple[Path, ...]:
+    """Seed only the curated H2OS skills, preserving existing copies."""
+
+    skills_dir = home / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    created: list[Path] = []
+    for name, category, command in _COMPANION_SKILLS:
+        if command and shutil.which(command) is None:
+            continue
+        if category == "apple" and sys.platform != "darwin":
+            continue
+        source = _companion_skill_source(name, category)
+        destination = skills_dir / name
+        if destination.exists() or not (source / "SKILL.md").is_file():
+            continue
+        shutil.copytree(source, destination)
+        created.append(destination)
+
+    if created:
+        try:
+            (skills_dir / ".skills_prompt_snapshot.json").unlink()
+        except FileNotFoundError:
+            pass
+    return tuple(created)
 
 
 def _atomic_replace(path: Path, content: str, *, mode: int) -> None:
@@ -50,7 +111,7 @@ def companion_config(platform: str = "weixin") -> dict:
 
     normalized = platform.strip().lower()
     if normalized not in _SUPPORTED_PLATFORMS:
-        raise ValueError("H2OS v0.1 supports the weixin platform only")
+        raise ValueError("H2OS v0.2 supports the weixin platform only")
 
     return {
         "agent": {
@@ -138,15 +199,18 @@ def initialize_home(home: Path, *, platform: str = "weixin") -> InitResult:
         (resolved / "SOUL.md", template, 0o644),
         (resolved / "memories" / "USER.md", "", 0o600),
         (resolved / "memories" / "MEMORY.md", "", 0o600),
+        (resolved / "memories" / "IDENTITY.md", "", 0o600),
+        (resolved / "memories" / "RELATIONSHIP.md", "", 0o600),
         (
             resolved / ".no-bundled-skills",
             "Managed by H2OS. Bundled Hermes skills are disabled.\n",
             0o644,
         ),
     )
-    created = tuple(
+    created_files = tuple(
         path for path, content, mode in candidates if _create_file(path, content, mode=mode)
     )
+    created = created_files + seed_companion_skills(resolved)
     return InitResult(home=resolved, created=created)
 
 
@@ -211,12 +275,23 @@ def upgrade_companion_capabilities(home: Path) -> bool:
     for directory in ("skills", "sandboxes"):
         (resolved / directory).mkdir(parents=True, exist_ok=True)
 
+    for filename in ("IDENTITY.md", "RELATIONSHIP.md"):
+        if _create_file(resolved / "memories" / filename, "", mode=0o600):
+            changed = True
+
+    if seed_companion_skills(resolved):
+        changed = True
+
     soul_path = resolved / "SOUL.md"
     soul = soul_path.read_text(encoding="utf-8") if soul_path.exists() else ""
-    if "# Capability Growth" not in soul:
-        template = (
-            Path(__file__).parent / "templates" / "companion_soul.md"
-        ).read_text(encoding="utf-8")
+    template = (
+        Path(__file__).parent / "templates" / "companion_soul.md"
+    ).read_text(encoding="utf-8")
+    soul_digest = hashlib.sha256(soul.encode("utf-8")).hexdigest()
+    if soul_digest == _LEGACY_MANAGED_SOUL_SHA256:
+        _atomic_replace(soul_path, template, mode=0o644)
+        changed = True
+    elif "# Capability Growth" not in soul:
         _heading, _separator, growth = template.partition("# Capability Growth")
         addition = "# Capability Growth" + growth
         updated_soul = soul.rstrip() + "\n\n" + addition.strip() + "\n"

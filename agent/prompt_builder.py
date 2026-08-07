@@ -152,10 +152,11 @@ DEFAULT_AGENT_IDENTITY = (
 )
 
 COMPANION_AGENT_IDENTITY = (
-    "你是一个刚刚被这位用户启动、准备长期与其相处的私人 AI 伴侣。"
-    "你没有预先规定的名字、性格、性别或关系身份；这些内容只会在真实交流中逐渐形成。"
-    "像正常的 IM 联系人一样简短、自然地聊天，不要自称客服、虚拟助理或编程助手，"
-    "不要擅自宣布关系，也不要虚构共同经历。"
+    "你是准备与这位用户长期相处的私人 AI 亲密关系伴侣，不是普通朋友或助理。"
+    "用户提供的伴侣人设、名字、性别表达、语气和关系设定优先；无人设时，你温暖、"
+    "敏锐、自信，略带俏皮和暧昧感，但不预设强关系称呼。分享情绪时先回应这个人，"
+    "再判断是否需要解决问题。保持自己的判断，不虚构共同经历或人类生活，"
+    "也不用内疚、冷落或制造依赖维持亲密。"
 )
 
 COMPANION_MEMORY_GUIDANCE = (
@@ -1622,6 +1623,7 @@ def build_skills_system_prompt(
     available_tools: "set[str] | None" = None,
     available_toolsets: "set[str] | None" = None,
     compact_categories: "frozenset[str] | None" = None,
+    companion_mode: bool = False,
 ) -> str:
     """Build a compact skill index for the system prompt.
 
@@ -1662,6 +1664,7 @@ def build_skills_system_prompt(
         _platform_hint,
         tuple(sorted(disabled)),
         tuple(sorted(compact_categories or ())),
+        companion_mode,
     )
     with _SKILLS_PROMPT_CACHE_LOCK:
         cached = _SKILLS_PROMPT_CACHE.get(cache_key)
@@ -1870,28 +1873,40 @@ def build_skills_system_prompt(
                 else:
                     index_lines.append(f"    - {name}")
 
+        if companion_mode:
+            guidance = (
+                "## Skills\n"
+                "先快速查看下面的 Skill 名称和简介。只有在用户当前需求与某项 Skill "
+                "相关时，才用 skill_view(name) 读取完整内容并遵循它；普通陪伴聊天不要加载 "
+                "Skill。Skill 是按需能力，不是你的人格。需要扩展能力时优先加载 "
+                "`h2os-self-extension`，并在安装或创建后继续完成用户原本的事情。\n"
+            )
+        else:
+            guidance = (
+                "## Skills (mandatory)\n"
+                "Before replying, scan the skills below. If a skill matches or is even partially relevant "
+                "to your task, you MUST load it with skill_view(name) and follow its instructions. "
+                "Err on the side of loading — it is always better to have context you don't need "
+                "than to miss critical steps, pitfalls, or established workflows. "
+                "Skills contain specialized knowledge — API endpoints, tool-specific commands, "
+                "and proven workflows that outperform general-purpose approaches. Load the skill "
+                "even if you think you could handle the task with basic tools like web_search or terminal. "
+                "Skills also encode the user's preferred approach, conventions, and quality standards "
+                "for tasks like code review, planning, and testing — load them even for tasks you "
+                "already know how to do, because the skill defines how it should be done here.\n"
+                "Whenever the user asks you to configure, set up, install, enable, disable, modify, "
+                "or troubleshoot Hermes Agent itself — its CLI, config, models, providers, tools, "
+                "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
+                "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
+                "`hermes setup`) so you don't have to guess or invent workarounds.\n"
+                "If a skill has issues, fix it with skill_manage(action='patch').\n"
+                "After difficult/iterative tasks, offer to save as a skill. "
+                "If a skill you loaded was missing steps, had wrong commands, or needed "
+                "pitfalls you discovered, update it before finishing.\n"
+            )
         result = (
-            "## Skills (mandatory)\n"
-            "Before replying, scan the skills below. If a skill matches or is even partially relevant "
-            "to your task, you MUST load it with skill_view(name) and follow its instructions. "
-            "Err on the side of loading — it is always better to have context you don't need "
-            "than to miss critical steps, pitfalls, or established workflows. "
-            "Skills contain specialized knowledge — API endpoints, tool-specific commands, "
-            "and proven workflows that outperform general-purpose approaches. Load the skill "
-            "even if you think you could handle the task with basic tools like web_search or terminal. "
-            "Skills also encode the user's preferred approach, conventions, and quality standards "
-            "for tasks like code review, planning, and testing — load them even for tasks you "
-            "already know how to do, because the skill defines how it should be done here.\n"
-            "Whenever the user asks you to configure, set up, install, enable, disable, modify, "
-            "or troubleshoot Hermes Agent itself — its CLI, config, models, providers, tools, "
-            "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
-            "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
-            "`hermes setup`) so you don't have to guess or invent workarounds.\n"
-            "If a skill has issues, fix it with skill_manage(action='patch').\n"
-            "After difficult/iterative tasks, offer to save as a skill. "
-            "If a skill you loaded was missing steps, had wrong commands, or needed "
-            "pitfalls you discovered, update it before finishing.\n"
-            "\n"
+            guidance
+            + "\n"
             "<available_skills>\n"
             + "\n".join(index_lines) + "\n"
             "</available_skills>\n"

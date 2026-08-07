@@ -1,0 +1,4 @@
+interface:
+  display_name: "Relationship Continuity"
+  short_description: "Maintain relationship continuity and milestones"
+  default_prompt: "Use this skill to recall or update confirmed relationship context."

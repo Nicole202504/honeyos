@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shared Rituals"
+  short_description: "Create consensual reminders and shared rituals"
+  default_prompt: "Use this skill to create or manage shared rituals and scheduled follow-ups."

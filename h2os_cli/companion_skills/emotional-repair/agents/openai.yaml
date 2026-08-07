@@ -1,0 +1,4 @@
+interface:
+  display_name: "Emotional Repair"
+  short_description: "Repair misunderstandings with care and honesty"
+  default_prompt: "Use this skill when a conversation needs apology, clarification, or repair."

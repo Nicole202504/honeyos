@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from h2os_cli import RUNTIME_ID
+
 
 def resolve_h2os_home(explicit: str | None = None) -> Path:
     """Return the absolute data directory for the single H2OS companion."""
@@ -25,5 +27,5 @@ def activate_h2os_home(home: Path) -> Path:
     resolved = home.expanduser().resolve()
     os.environ["H2OS_HOME"] = str(resolved)
     os.environ["HERMES_HOME"] = str(resolved)
-    os.environ["H2OS_RUNTIME_ID"] = "h2os-companion-v0.1"
+    os.environ["H2OS_RUNTIME_ID"] = RUNTIME_ID
     return resolved

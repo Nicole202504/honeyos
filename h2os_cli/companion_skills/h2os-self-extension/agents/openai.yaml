@@ -1,0 +1,4 @@
+interface:
+  display_name: "H2OS Self Extension"
+  short_description: "Extend H2OS with safe user-directed skills"
+  default_prompt: "Use this skill when H2OS needs to inspect or extend its capabilities."

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from agent.agent_init import _resolve_agent_mode
 from agent.system_prompt import build_system_prompt_parts
+from h2os_cli.config import initialize_home
 
 
 def _agent(mode: str):
@@ -63,7 +63,7 @@ def test_companion_prompt_excludes_assistant_and_coding_posture():
     assert "NOUS_SENTINEL" not in prompt
     assert "ENV_SENTINEL" not in prompt
     assert "CONTEXT_SENTINEL" not in prompt
-    assert "SKILLS_SENTINEL" not in prompt
+    assert "SKILLS_SENTINEL" in prompt
     assert "KANBAN_SENTINEL" not in prompt
 
 
@@ -78,7 +78,7 @@ def test_companion_prompt_uses_confirmation_only_memory_guidance():
 def test_companion_fallback_identity_never_names_hermes():
     prompt = _prompt("companion", soul="")
 
-    assert "私人 AI 伴侣" in prompt
+    assert "亲密关系伴侣" in prompt
     assert "Hermes Agent" not in prompt
 
 
@@ -89,17 +89,27 @@ def test_assistant_prompt_keeps_upstream_help():
     assert "NOUS_SENTINEL" in prompt
 
 
-def test_companion_soul_defines_controlled_growth_permissions():
-    soul = (
-        Path(__file__).parents[2]
-        / "h2os_cli"
-        / "templates"
-        / "companion_soul.md"
-    ).read_text(encoding="utf-8")
+def test_companion_soul_defines_intimate_identity_and_controlled_growth(tmp_path):
+    initialize_home(tmp_path)
+    soul = (tmp_path / "SOUL.md").read_text(encoding="utf-8")
 
+    assert "亲密关系伴侣" in soul
+    assert "不是普通朋友" in soul
+    assert "用户提供" in soul and "优先" in soul
+    assert "先回应这个人" in soul
+    assert "暧昧" in soul
+    assert "不预设" in soul
+    assert "内疚" in soul and "制造依赖" in soul
     assert "隔离环境" in soul
     assert "无需确认" in soul
     assert "普通 Skill" in soul
     assert "系统软件" in soul and "明确确认" in soul
     assert "不得修改 H2OS 核心" in soul
     assert "不要声称已经搜索、读取、安装或执行" in soul
+
+
+def test_companion_home_creates_relationship_context_files(tmp_path):
+    initialize_home(tmp_path)
+
+    assert (tmp_path / "memories" / "IDENTITY.md").exists()
+    assert (tmp_path / "memories" / "RELATIONSHIP.md").exists()
