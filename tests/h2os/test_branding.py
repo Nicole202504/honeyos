@@ -35,7 +35,7 @@ def test_public_readme_and_installer_use_honey_os_brand():
         encoding="utf-8"
     )
 
-    assert readme.startswith("# Honey OS")
+    assert readme.startswith("# 🍯 Honey OS")
     assert "H2OS" not in readme
     assert "Hermes" not in readme
     assert "uv run honey-os" in readme
