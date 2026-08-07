@@ -1,10 +1,28 @@
 from __future__ import annotations
 
+import json
+import urllib.request
+
 import yaml
 
 from h2os_cli.bootstrap import activate_h2os_home
 from h2os_cli.config import initialize_home
-from h2os_cli.setup import ModelChoice, configure_model, run_setup
+from h2os_cli.setup import ModelChoice, configure_model, run_setup, validate_model_key
+
+
+class _Response:
+    def __init__(self, payload, status=200):
+        self.payload = payload
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
 
 
 def test_configure_model_keeps_key_out_of_yaml(tmp_path):
@@ -54,6 +72,60 @@ def test_custom_model_uses_named_provider_key_env_at_runtime(monkeypatch, tmp_pa
     assert runtime["model"] == "deepseek-v4-flash"
 
 
+def test_model_validation_uses_real_non_streaming_chat_completion(monkeypatch):
+    observed = {}
+
+    def open_request(request, timeout):
+        observed["request"] = request
+        observed["timeout"] = timeout
+        return _Response(
+            {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", open_request)
+    choice = ModelChoice(
+        provider="custom",
+        model="test-model",
+        base_url="https://api.example.com/v1",
+        key_env="H2OS_MODEL_API_KEY",
+    )
+
+    validate_model_key(choice, "valid-key")
+
+    request = observed["request"]
+    body = json.loads(request.data.decode("utf-8"))
+    assert request.full_url == "https://api.example.com/v1/chat/completions"
+    assert request.get_method() == "POST"
+    assert request.headers["Authorization"] == "Bearer valid-key"
+    assert body == {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Reply with OK only."}],
+        "max_tokens": 16,
+        "stream": False,
+    }
+
+
+def test_model_validation_rejects_string_instead_of_openai_response(monkeypatch):
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda _request, timeout: _Response("data: not-an-openai-response"),
+    )
+    choice = ModelChoice(
+        provider="custom",
+        model="test-model",
+        base_url="https://api.example.com/v1",
+        key_env="H2OS_MODEL_API_KEY",
+    )
+
+    try:
+        validate_model_key(choice, "valid-key")
+    except ValueError as exc:
+        assert "OpenAI Chat Completions" in str(exc)
+    else:
+        raise AssertionError("invalid provider response was accepted")
+
+
 def test_setup_orders_key_validation_before_weixin_and_start(tmp_path):
     initialize_home(tmp_path)
     events = []
@@ -71,6 +143,7 @@ def test_setup_orders_key_validation_before_weixin_and_start(tmp_path):
             ("gateway", command, tuple(arguments), home)
         )
         or 0,
+        ready_check_fn=lambda home: events.append(("ready", home)) or True,
     )
 
     assert result == 0
@@ -79,6 +152,7 @@ def test_setup_orders_key_validation_before_weixin_and_start(tmp_path):
         ("weixin", tmp_path.resolve()),
         ("gateway", "install", ("--no-start-now",), tmp_path.resolve()),
         ("gateway", "start", (), tmp_path.resolve()),
+        ("ready", tmp_path.resolve()),
     ]
 
 
@@ -96,6 +170,7 @@ def test_setup_stops_before_weixin_when_key_validation_fails(tmp_path, capsys):
         ),
         weixin_setup_fn=lambda home: events.append(home) or 0,
         gateway_run_fn=lambda command, *, home, arguments=(): 0,
+        ready_check_fn=lambda _home: True,
     )
 
     assert result == 1

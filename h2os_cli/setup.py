@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import json
 import os
 import tempfile
 import urllib.error
@@ -94,20 +95,43 @@ def configure_model(home: Path, choice: ModelChoice, api_key: str) -> None:
 
 
 def validate_model_key(choice: ModelChoice, api_key: str) -> None:
-    """Perform a small authenticated request before continuing to Weixin."""
+    """Verify the selected model with a real OpenAI-compatible chat request."""
 
-    if choice.provider == "openrouter":
-        url = f"{OPENROUTER_BASE_URL}/key"
-    else:
-        url = f"{choice.base_url.rstrip('/')}/models"
+    url = f"{choice.base_url.rstrip('/')}/chat/completions"
+    body = json.dumps(
+        {
+            "model": choice.model,
+            "messages": [{"role": "user", "content": "Reply with OK only."}],
+            "max_tokens": 16,
+            "stream": False,
+        }
+    ).encode("utf-8")
     request = urllib.request.Request(
         url,
-        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             if not 200 <= int(response.status) < 300:
                 raise ValueError(f"模型服务返回 HTTP {response.status}")
+            try:
+                payload = json.loads(response.read().decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "模型服务没有返回有效的 OpenAI Chat Completions JSON"
+                ) from exc
+            choices = payload.get("choices") if isinstance(payload, dict) else None
+            message = choices[0].get("message") if choices and isinstance(choices[0], dict) else None
+            if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+                raise ValueError(
+                    "模型服务不兼容 OpenAI Chat Completions，请检查 Base URL 和模型"
+                )
     except urllib.error.HTTPError as exc:
         if exc.code in {401, 403}:
             raise ValueError("API Key 无效或没有访问权限") from exc
@@ -154,6 +178,7 @@ def run_setup(
     validate_fn: Callable[[ModelChoice, str], None] = validate_model_key,
     weixin_setup_fn=None,
     gateway_run_fn=None,
+    ready_check_fn=None,
 ) -> int:
     """Run the setup flow in the only valid product order."""
 
@@ -166,6 +191,10 @@ def run_setup(
         from h2os_cli.runtime import run_gateway_command
 
         gateway_run_fn = run_gateway_command
+    if ready_check_fn is None:
+        from h2os_cli.health import print_first_start_report
+
+        ready_check_fn = print_first_start_report
 
     print("H2OS 设置：Base URL / 模型 / API Key → 微信 → 启动")
     try:
@@ -201,5 +230,8 @@ def run_setup(
         return installed
     started = gateway_run_fn("start", home=resolved)
     if started == 0:
+        if not ready_check_fn(resolved):
+            print("H2OS 首次启动检查未通过，请按上面的提示处理。", file=os.sys.stderr)
+            return 1
         print("✓ H2OS 已启动，现在可以去微信聊天。")
     return started

@@ -1,264 +1,173 @@
-<p align="center">
-  <img src="assets/banner.png" alt="Hermes Agent" width="100%">
-</p>
+# H2OS：住在你微信里的私人 AI 伴侣
 
-# Hermes Agent ☤
-<p align="center">
-  <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a> | <a href="https://hermes-agent.nousresearch.com/">Hermes Desktop</a>
-</p>
-<p align="center">
-  <a href="https://hermes-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-hermes--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
-  <a href="https://discord.gg/NousResearch"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://github.com/NousResearch/hermes-agent/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://nousresearch.com"><img src="https://img.shields.io/badge/Built%20by-Nous%20Research-blueviolet?style=for-the-badge" alt="Built by Nous Research"></a>
-  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/Lang-中文-red?style=for-the-badge" alt="中文"></a>
-  <a href="README.ur-pk.md"><img src="https://img.shields.io/badge/Lang-اردو-green?style=for-the-badge" alt="اردو"></a>
-  <a href="README.es.md"><img src="https://img.shields.io/badge/Lang-Español-orange?style=for-the-badge" alt="Español"></a>
-</p>
+H2OS 是一套本地运行、通过微信陪伴你的单用户 AI Agent。它会逐渐形成自己的名字、性格和相处方式，也能记住双方确认过的关系、偏好、约定与共同经历。
 
-**The self-improving AI agent built by [Nous Research](https://nousresearch.com).** It's the only agent with a built-in learning loop — it creates skills from experience, improves them during use, nudges itself to persist knowledge, searches its own past conversations, and builds a deepening model of who you are across sessions. Run it on a $5 VPS, a GPU cluster, or serverless infrastructure that costs nearly nothing when idle. It's not tied to your laptop — talk to it from Telegram while it works on a cloud VM.
+它不只是聊天角色，还可以在用户授权的能力范围内搜索网页、管理文件、运行隔离代码、安装普通 Skill、建立待办和定时任务。模型 API Key、微信凭据和伴侣记忆都保存在用户自己的电脑上。
 
-Use any model you want — [Nous Portal](https://portal.nousresearch.com), OpenRouter, OpenAI, your own endpoint, and [many others](https://hermes-agent.nousresearch.com/docs/integrations/providers). Switch with `hermes model` — no code changes, no lock-in.
+> 当前版本适合受邀的小范围体验。每套 H2OS 只服务一位用户，请勿让多个用户共用同一个安装实例。
 
-<table>
-<tr><td><b>A real terminal interface</b></td><td>Full TUI with multiline editing, slash-command autocomplete, conversation history, interrupt-and-redirect, and streaming tool output.</td></tr>
-<tr><td><b>Lives where you do</b></td><td>Telegram, Discord, Slack, WhatsApp, Signal, and CLI — all from a single gateway process. Voice memo transcription, cross-platform conversation continuity.</td></tr>
-<tr><td><b>A closed learning loop</b></td><td>Agent-curated memory with periodic nudges. Autonomous skill creation after complex tasks. Skills self-improve during use. FTS5 session search with LLM summarization for cross-session recall. <a href="https://github.com/plastic-labs/honcho">Honcho</a> dialectic user modeling. Compatible with the <a href="https://agentskills.io">agentskills.io</a> open standard.</td></tr>
-<tr><td><b>Scheduled automations</b></td><td>Built-in cron scheduler with delivery to any platform. Daily reports, nightly backups, weekly audits — all in natural language, running unattended.</td></tr>
-<tr><td><b>Delegates and parallelizes</b></td><td>Spawn isolated subagents for parallel workstreams. Write Python scripts that call tools via RPC, collapsing multi-step pipelines into zero-context-cost turns.</td></tr>
-<tr><td><b>Runs anywhere, not just your laptop</b></td><td>Seven terminal backends — local, Docker, SSH, Singularity, Modal, Daytona, and Vercel Sandbox. Daytona and Modal offer serverless persistence — your agent's environment hibernates when idle and wakes on demand, costing nearly nothing between sessions. Run it on a $5 VPS or a GPU cluster.</td></tr>
-<tr><td><b>Research-ready</b></td><td>Batch trajectory generation, trajectory compression for training the next generation of tool-calling models.</td></tr>
-</table>
+## 开始前准备
 
----
+- 一台 macOS 电脑（推荐 macOS 13 或更新版本）或 Linux 电脑。
+- 一个 OpenAI Chat Completions 兼容的模型服务。
+- 该服务的 Base URL、Model ID 和 API Key。
+- 手机微信。
+- 安装过程需要联网，建议预留至少 3 GB 磁盘空间。
 
-## Quick Install
+不需要 OpenRouter。安装时默认就是填写自己的 OpenAI 兼容 Base URL。
 
-### Linux, macOS, WSL2, Termux
+## 最简单的安装方式（macOS）
+
+1. 登录已获邀请的 GitHub 账号，打开本仓库。
+2. 点击绿色的 **Code**，选择 **Download ZIP**。
+3. 解压下载的文件。
+4. 双击根目录中的 **Install-H2OS.command**。
+5. 如果 macOS 阻止打开：右键该文件，选择 **打开**，再次确认。
+
+安装器会自动准备 H2OS 所需的 Python 运行环境和依赖，不需要用户预先安装 Python 或 `uv`。
+
+如果双击仍无法运行，打开“终端”，把解压后的文件夹拖进终端，然后执行：
 
 ```bash
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+/bin/sh scripts/install_h2os.sh
 ```
 
-### Windows (native, PowerShell)
-
-> **Heads up:** Native Windows runs Hermes without WSL — CLI, gateway, TUI, and tools all work natively. If you'd rather use WSL2, the Linux/macOS one-liner above works there too. Found a bug? Please [file issues](https://github.com/NousResearch/hermes-agent/issues).
-
-Run this in PowerShell:
-
-```powershell
-iex (irm https://hermes-agent.nousresearch.com/install.ps1)
-```
-
-The installer handles everything: uv, Python 3.11, Node.js, ripgrep, ffmpeg, **and a portable Git Bash** (MinGit, unpacked to `%LOCALAPPDATA%\hermes\git` — no admin required, completely isolated from any system Git install). Hermes uses this bundled Git Bash to run shell commands.
-
-If you already have Git installed, the installer detects it and uses that instead. Otherwise a ~45MB MinGit download is all you need — it won't touch or interfere with any system Git.
-
-> **Android / Termux:** The tested manual path is documented in the [Termux guide](https://hermes-agent.nousresearch.com/docs/getting-started/termux). On Termux, Hermes installs a curated `.[termux]` extra because the full `.[all]` extra currently pulls Android-incompatible voice dependencies.
->
-> **Windows:** Native Windows is fully supported — the PowerShell one-liner above installs everything. If you'd rather use WSL2, the Linux command works there too. Native Windows install lives under `%LOCALAPPDATA%\hermes`; WSL2 installs under `~/.hermes` as on Linux.
-
-After installation:
+熟悉 Git 的用户也可以使用：
 
 ```bash
-source ~/.bashrc    # reload shell (or: source ~/.zshrc)
-hermes              # start chatting!
+git clone https://github.com/Nicole202504/test_ai_0806.git
+cd test_ai_0806
+/bin/sh scripts/install_h2os.sh
 ```
 
-### Troubleshooting
+## 首次设置会经历什么
 
-#### Windows Defender or antivirus flags `uv.exe` as malware
+### 1. 连接模型
 
-If your antivirus (Bitdefender, Windows Defender, etc.) quarantines `uv.exe` from the Hermes `bin` folder (`%LOCALAPPDATA%\hermes\bin\uv.exe`), this is a **false positive**. The file is Astral's `uv` — the Rust Python package manager Hermes bundles to manage its Python environment. ML-based antivirus engines commonly flag unsigned Rust binaries that download and install packages.
+安装器会依次询问：
 
-**To verify your copy is authentic:**
-
-```powershell
-# Install GitHub CLI if needed
-winget install --id GitHub.cli
-
-# Login to GitHub
-gh auth login
-
-# Run verification
-$uv = "$env:LOCALAPPDATA\hermes\bin\uv.exe"
-$ver = (& $uv --version).Split(' ')[1]
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$zip = "$env:TEMP\uv.zip"
-Invoke-WebRequest "https://github.com/astral-sh/uv/releases/download/$ver/uv-x86_64-pc-windows-msvc.zip" -OutFile $zip -UseBasicParsing
-gh attestation verify $zip --repo astral-sh/uv
-Expand-Archive $zip "$env:TEMP\uv_x" -Force
-(Get-FileHash "$env:TEMP\uv_x\uv.exe").Hash -eq (Get-FileHash $uv).Hash
+```text
+模型服务：直接按回车选择 OpenAI 兼容服务
+Base URL：例如 https://api.example.com/v1
+Model ID：服务商提供的模型 ID
+API Key：输入时终端不会显示字符，这是正常现象
 ```
 
-If attestation says "Verification succeeded" and the last line prints `True`, you're good.
+H2OS 会真的向所选模型发送一条极小的测试消息。只有 API Key、模型和 OpenAI Chat Completions 返回格式都可用，才会继续连接微信。这可以提前拦截“能访问 `/models`，实际却无法聊天”的假兼容接口。
 
-**To whitelist Hermes:**
-- **Windows Defender:** Run PowerShell as Admin → `Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\hermes\bin"`
-- **Bitdefender:** Add an exception in the Bitdefender console (Protection > Antivirus > Settings > Manage Exceptions)
-- Whitelist the **folder**, not the file hash — Hermes updates `uv` and the hash changes every version
+### 2. 连接微信
 
-For more context, see the upstream Astral reports: [astral-sh/uv#13553](https://github.com/astral-sh/uv/issues/13553), [astral-sh/uv#15011](https://github.com/astral-sh/uv/issues/15011), [astral-sh/uv#10079](https://github.com/astral-sh/uv/issues/10079).
+终端会显示腾讯 iLink 登录二维码：
 
----
+1. 用手机微信扫码。
+2. 在手机上确认登录。
+3. H2OS 自动把扫码人设为唯一允许私聊的用户。
+4. 群聊默认关闭，不需要再输入配对码。
 
-## Getting Started
+这里连接的是一个微信 iLink Bot 身份，不会控制或读取用户的普通个人微信聊天。
+
+### 3. 首次启动检查
+
+启动前会检查：
+
+- 本地数据目录是否可写。
+- 模型和 API Key 是否已经通过真实对话验证。
+- 微信是否已经绑定扫码本人。
+- Docker 和 Computer Use 是否可用。
+
+Docker、Computer Use 缺失只会显示黄色提醒，不影响微信聊天、记忆、搜索、文件、Skill、待办和定时任务。Docker 用于隔离代码执行；Computer Use 用于桌面控制。
+
+看到下面这句话即可回到微信：
+
+```text
+✓ H2OS 已启动，现在可以去微信聊天。
+```
+
+第一次可以直接发送：
+
+```text
+你好，我们先认识一下吧
+```
+
+如果用户已经有明确的人设，可以直接告诉它；没有人设也没关系，伴侣会通过自然相处逐渐形成，但不会擅自编造双方已经确认的关系或共同经历。
+
+## `/new` 会不会失忆
+
+在微信中发送小写的：
+
+```text
+/new
+```
+
+会结束当前短期聊天上下文并开始一段新会话，但不会删除长期记忆。
+
+会保留：
+
+- 伴侣名字、性格、说话方式和稳定偏好。
+- 双方确认的关系、昵称、边界、仪式和约定。
+- 用户明确要求记住的长期资料。
+- 真实发生并确认保存的共同经历。
+- Skill、待办、定时任务、设置和历史会话。
+
+会清空：
+
+- 当前对话窗口里的临时上下文。
+- 未保存的临时任务状态和工具运行状态。
+
+当用户提到“上次”“之前的约定”时，H2OS 可以搜索旧会话核实。只在聊天里随口出现、没有保存为长期记忆的内容，不保证在 `/new` 后自动出现。
+
+## 常用管理命令
+
+在解压后的 H2OS 文件夹中运行：
 
 ```bash
-hermes              # Interactive CLI — start a conversation
-hermes model        # Choose your LLM provider and model
-hermes tools        # Configure which tools are enabled
-hermes config set   # Set individual config values
-hermes config get   # Print individual config values
-hermes gateway      # Start the messaging gateway (Telegram, Discord, etc.)
-hermes setup        # Run the full setup wizard (configures everything at once)
-hermes claw migrate # Migrate from OpenClaw (if coming from OpenClaw)
-hermes update       # Update to the latest version
-hermes doctor       # Diagnose any issues
+uv run h2os status
+uv run h2os doctor
+uv run h2os logs
+uv run h2os restart
+uv run h2os stop
+uv run h2os start
 ```
 
-📖 **[Full documentation →](https://hermes-agent.nousresearch.com/docs/)**
-
----
-
-## Skip the API-key collection — Nous Portal
-
-Hermes works with whatever provider you want — that's not changing. But if you'd rather not collect five separate API keys for the model, web search, image generation, TTS, and a cloud browser, **[Nous Portal](https://portal.nousresearch.com)** covers all of them under one subscription:
-
-- **300+ models** — pick any of them with `/model <name>`
-- **Tool Gateway** — web search (Firecrawl), image generation (FAL), text-to-speech (OpenAI), cloud browser (Browser Use), all routed through your sub. No extra accounts.
-
-One command from a fresh install:
+重新填写模型或重新扫码：
 
 ```bash
-hermes setup --portal
+uv run h2os setup
 ```
 
-That logs you in via OAuth, sets Nous as your provider, and turns on the Tool Gateway. Check what's wired up any time with `hermes portal info`. Full details on the [Tool Gateway docs page](https://hermes-agent.nousresearch.com/docs/user-guide/features/tool-gateway).
-
-You can still bring your own keys per-tool whenever you want — the gateway is per-backend, not all-or-nothing.
-
----
-
-## CLI vs Messaging Quick Reference
-
-Hermes has two entry points: start the terminal UI with `hermes`, or run the gateway and talk to it from Telegram, Discord, Slack, WhatsApp, Signal, or Email. Once you're in a conversation, many slash commands are shared across both interfaces.
-
-| Action                         | CLI                                           | Messaging platforms                                                              |
-| ------------------------------ | --------------------------------------------- | -------------------------------------------------------------------------------- |
-| Start chatting                 | `hermes`                                      | Run `hermes gateway setup` + `hermes gateway start`, then send the bot a message |
-| Start fresh conversation       | `/new` or `/reset`                            | `/new` or `/reset`                                                               |
-| Change model                   | `/model [provider:model]`                     | `/model [provider:model]`                                                        |
-| Set a personality              | `/personality [name]`                         | `/personality [name]`                                                            |
-| Retry or undo the last turn    | `/retry`, `/undo`                             | `/retry`, `/undo`                                                                |
-| Compress context / check usage | `/compress`, `/usage`, `/insights [--days N]` | `/compress`, `/usage`, `/insights [days]`                                        |
-| Browse skills                  | `/skills` or `/<skill-name>`                  | `/<skill-name>`                                                                  |
-| Interrupt current work         | `Ctrl+C` or send a new message                | `/stop` or send a new message                                                    |
-| Platform-specific status       | `/platforms`                                  | `/status`, `/sethome`                                                            |
-
-For the full command lists, see the [CLI guide](https://hermes-agent.nousresearch.com/docs/user-guide/cli) and the [Messaging Gateway guide](https://hermes-agent.nousresearch.com/docs/user-guide/messaging).
-
----
-
-## Documentation
-
-All documentation lives at **[hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs/)**:
-
-| Section                                                                                             | What's Covered                                             |
-| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| [Quickstart](https://hermes-agent.nousresearch.com/docs/getting-started/quickstart)                 | Install → setup → first conversation in 2 minutes          |
-| [CLI Usage](https://hermes-agent.nousresearch.com/docs/user-guide/cli)                              | Commands, keybindings, personalities, sessions             |
-| [Configuration](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)                | Config file, providers, models, all options                |
-| [Messaging Gateway](https://hermes-agent.nousresearch.com/docs/user-guide/messaging)                | Telegram, Discord, Slack, WhatsApp, Signal, Home Assistant |
-| [Security](https://hermes-agent.nousresearch.com/docs/user-guide/security)                          | Command approval, DM pairing, container isolation          |
-| [Tools & Toolsets](https://hermes-agent.nousresearch.com/docs/user-guide/features/tools)            | 40+ tools, toolset system, terminal backends               |
-| [Skills System](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)              | Procedural memory, Skills Hub, creating skills             |
-| [Memory](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory)                     | Persistent memory, user profiles, best practices           |
-| [MCP Integration](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)               | Connect any MCP server for extended capabilities           |
-| [Cron Scheduling](https://hermes-agent.nousresearch.com/docs/user-guide/features/cron)              | Scheduled tasks with platform delivery                     |
-| [Context Files](https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files)       | Project context that shapes every conversation             |
-| [Architecture](https://hermes-agent.nousresearch.com/docs/developer-guide/architecture)             | Project structure, agent loop, key classes                 |
-| [Contributing](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing)             | Development setup, PR process, code style                  |
-| [CLI Reference](https://hermes-agent.nousresearch.com/docs/reference/cli-commands)                  | All commands and flags                                     |
-| [Environment Variables](https://hermes-agent.nousresearch.com/docs/reference/environment-variables) | Complete env var reference                                 |
-
----
-
-## Migrating from OpenClaw
-
-If you're coming from OpenClaw, Hermes can automatically import your settings, memories, skills, and API keys.
-
-**During first-time setup:** The setup wizard (`hermes setup`) automatically detects `~/.openclaw` and offers to migrate before configuration begins.
-
-**Anytime after install:**
+升级到 `main` 最新版本（仅限 Git 安装）：
 
 ```bash
-hermes claw migrate              # Interactive migration (full preset)
-hermes claw migrate --dry-run    # Preview what would be migrated
-hermes claw migrate --preset user-data   # Migrate without secrets
-hermes claw migrate --overwrite  # Overwrite existing conflicts
+git pull origin main
+/bin/sh scripts/install_h2os.sh
 ```
 
-What gets imported:
+升级不会覆盖已有的人设、关系记忆、聊天历史、Skill 或微信凭据。
 
-- **SOUL.md** — persona file
-- **Memories** — MEMORY.md and USER.md entries
-- **Skills** — user-created skills → `~/.hermes/skills/openclaw-imports/`
-- **Command allowlist** — approval patterns
-- **Messaging settings** — platform configs, allowed users, working directory
-- **API keys** — allowlisted secrets (Telegram, OpenRouter, OpenAI, Anthropic, ElevenLabs)
-- **TTS assets** — workspace audio files
-- **Workspace instructions** — AGENTS.md (with `--workspace-target`)
+## 数据与隐私
 
-See `hermes claw migrate --help` for all options, or use the `openclaw-migration` skill for an interactive agent-guided migration with dry-run previews.
+每个用户的数据默认位于：
 
----
-
-## Contributing
-
-We welcome contributions! See the [Contributing Guide](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing) for development setup, code style, and PR process.
-
-Quick start for contributors — use the standard installer, then work from the
-full git checkout it creates at `$HERMES_HOME/hermes-agent` (usually
-`~/.hermes/hermes-agent`). This matches the layout used by `hermes update`, the
-managed venv, lazy dependencies, gateway, and docs tooling.
-
-```bash
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-cd "${HERMES_HOME:-$HOME/.hermes}/hermes-agent"
-uv pip install -e ".[all,dev]"
-scripts/run_tests.sh
+```text
+~/.h2os
 ```
 
-Manual clone fallback (for throwaway clones/CI where you intentionally do not
-want the managed install layout):
+其中包括配置、微信凭据、伴侣记忆、会话历史、Skill 和日志。API Key 与微信凭据不会写进 Git 仓库。
 
-Create the venv outside the cloned source tree — a venv inside the directory
-the agent operates from can be wiped by a relative-path command the agent runs
-against its own checkout, destroying the running runtime mid-session.
+卸载代码不会自动删除 `~/.h2os`，所以重新下载代码仍可继续使用原来的伴侣。若需要彻底清除数据，应先停止 H2OS，再由用户本人确认后删除该目录。
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv ~/.hermes/venvs/hermes-dev --python 3.11
-source ~/.hermes/venvs/hermes-dev/bin/activate
-uv pip install -e ".[all,dev]"
-scripts/run_tests.sh
-```
+## 体验反馈建议
 
----
+内测时重点记录：
 
-## Community
+- 初次聊天是否能感到它是伴侣，而不是普通助理。
+- 人设不明确时，它形成个性的过程是否自然。
+- `/new` 之后称呼、关系和重要记忆是否连续。
+- 网页搜索、文件、Skill、待办和定时任务是否能完成。
+- 失败时的提示是否让普通用户知道下一步怎么做。
 
-- 💬 [Discord](https://discord.gg/NousResearch)
-- 📚 [Skills Hub](https://agentskills.io)
-- 🐛 [Issues](https://github.com/NousResearch/hermes-agent/issues)
-- 🔌 [computer-use-linux](https://github.com/avifenesh/computer-use-linux) — Linux desktop-control MCP server for Hermes and other MCP hosts, with AT-SPI accessibility trees, Wayland/X11 input, screenshots, and compositor window targeting.
-- 🔌 [HermesClaw](https://github.com/AaronWong1999/hermesclaw) — Community WeChat bridge: Run Hermes Agent and OpenClaw on the same WeChat account.
+反馈问题时请附上问题发生时间和 `uv run h2os doctor` 的结果，不要发送 API Key、微信 Token 或整个 `~/.h2os` 目录。
 
----
+## 项目来源
 
-## License
-
-MIT — see [LICENSE](LICENSE).
-
-Built by [Nous Research](https://nousresearch.com).
+H2OS 基于 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 的开源代码重新设计为单伴侣运行时，并保留原项目的 MIT License 与版权声明。H2OS 使用独立命令、独立数据目录、精简工具集和伴侣专用记忆策略，不会被本机已有 Hermes 实例识别为同一套运行数据。
