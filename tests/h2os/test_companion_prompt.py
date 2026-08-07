@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from agent.agent_init import _resolve_agent_mode
+from agent.system_prompt import build_system_prompt_parts
+
+
+def _agent(mode: str):
+    return SimpleNamespace(
+        _agent_mode=mode,
+        load_soul_identity=True,
+        skip_context_files=False,
+        valid_tool_names={"memory", "session_search", "skills_list", "terminal"},
+        _task_completion_guidance=True,
+        _parallel_tool_call_guidance=True,
+        _tool_use_enforcement=True,
+        _environment_probe=True,
+        _kanban_worker_guidance="KANBAN_SENTINEL",
+        _memory_store=None,
+        _memory_manager=None,
+        _memory_enabled=False,
+        _user_profile_enabled=False,
+        _platform_hint_overrides={},
+        model="gpt-test",
+        provider="openai",
+        platform="weixin",
+        pass_session_id=False,
+        session_id="",
+    )
+
+
+def _prompt(mode: str, soul: str = "我是私人 AI 伴侣") -> str:
+    with (
+        patch("run_agent.load_soul_md", return_value=soul),
+        patch("run_agent.build_nous_subscription_prompt", return_value="NOUS_SENTINEL"),
+        patch("run_agent.build_environment_hints", return_value="ENV_SENTINEL"),
+        patch("run_agent.build_context_files_prompt", return_value="CONTEXT_SENTINEL"),
+        patch("run_agent.build_skills_system_prompt", return_value="SKILLS_SENTINEL"),
+    ):
+        parts = build_system_prompt_parts(_agent(mode))
+    return "\n".join(parts.values())
+
+
+def test_resolve_agent_mode_is_strict_and_backward_compatible():
+    assert _resolve_agent_mode({}) == "assistant"
+    assert _resolve_agent_mode({"agent": {"mode": " Companion "}}) == "companion"
+    assert _resolve_agent_mode({"agent": {"mode": "unknown"}}) == "assistant"
+    assert _resolve_agent_mode({"agent": "broken"}) == "assistant"
+
+
+def test_companion_prompt_excludes_assistant_and_coding_posture():
+    prompt = _prompt("companion")
+
+    assert "私人 AI 伴侣" in prompt
+    assert "You run on Hermes Agent" not in prompt
+    assert "Finishing the job" not in prompt
+    assert "Parallel tool calls" not in prompt
+    assert "Active Hermes profile" not in prompt
+    assert "coding agent" not in prompt.lower()
+    assert "NOUS_SENTINEL" not in prompt
+    assert "ENV_SENTINEL" not in prompt
+    assert "CONTEXT_SENTINEL" not in prompt
+    assert "SKILLS_SENTINEL" not in prompt
+    assert "KANBAN_SENTINEL" not in prompt
+
+
+def test_companion_prompt_uses_confirmation_only_memory_guidance():
+    prompt = _prompt("companion")
+
+    assert "明确" in prompt
+    assert "不要根据语气推断" in prompt
+    assert "过去对话" in prompt
+
+
+def test_companion_fallback_identity_never_names_hermes():
+    prompt = _prompt("companion", soul="")
+
+    assert "私人 AI 伴侣" in prompt
+    assert "Hermes Agent" not in prompt
+
+
+def test_assistant_prompt_keeps_upstream_help():
+    prompt = _prompt("assistant")
+
+    assert "You run on Hermes Agent" in prompt
+    assert "NOUS_SENTINEL" in prompt
+
+
+def test_companion_soul_defines_controlled_growth_permissions():
+    soul = (
+        Path(__file__).parents[2]
+        / "h2os_cli"
+        / "templates"
+        / "companion_soul.md"
+    ).read_text(encoding="utf-8")
+
+    assert "隔离环境" in soul
+    assert "无需确认" in soul
+    assert "普通 Skill" in soul
+    assert "系统软件" in soul and "明确确认" in soul
+    assert "不得修改 H2OS 核心" in soul
+    assert "不要声称已经搜索、读取、安装或执行" in soul

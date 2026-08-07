@@ -1,0 +1,205 @@
+"""One-pass H2OS onboarding: model, Weixin, then background service."""
+
+from __future__ import annotations
+
+import getpass
+import os
+import tempfile
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+import yaml
+
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+RECOMMENDED_OPENROUTER_MODEL = "z-ai/glm-5.2"
+
+
+@dataclass(frozen=True)
+class ModelChoice:
+    provider: str
+    model: str
+    base_url: str
+    key_env: str
+
+
+def _atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.chmod(temporary_name, mode)
+        os.replace(temporary_name, path)
+    finally:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+
+
+def _set_env_value(path: Path, key: str, value: str) -> None:
+    existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    replacement = f"{key}={value}"
+    output: list[str] = []
+    replaced = False
+    for line in existing:
+        if line.strip().startswith(f"{key}="):
+            if not replaced:
+                output.append(replacement)
+                replaced = True
+            continue
+        output.append(line)
+    if not replaced:
+        output.append(replacement)
+    _atomic_write(path, "\n".join(output).rstrip() + "\n")
+
+
+def configure_model(home: Path, choice: ModelChoice, api_key: str) -> None:
+    """Persist model behavior in YAML and the secret only in ``.env``."""
+
+    resolved = home.expanduser().resolve()
+    config_path = resolved / "config.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(config, dict):
+        raise ValueError("config.yaml 不是有效的配置映射")
+    runtime_provider = choice.provider
+    if choice.provider == "custom":
+        runtime_provider = "h2os-model"
+        providers = config.get("providers")
+        if not isinstance(providers, dict):
+            providers = {}
+            config["providers"] = providers
+        providers[runtime_provider] = {
+            "name": runtime_provider,
+            "base_url": choice.base_url,
+            "key_env": choice.key_env,
+            "api_mode": "chat_completions",
+            "default_model": choice.model,
+        }
+    config["model"] = {
+        "default": choice.model,
+        "provider": runtime_provider,
+        "base_url": choice.base_url,
+        "api_mode": "chat_completions",
+    }
+    _atomic_write(
+        config_path,
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+    )
+    _set_env_value(resolved / ".env", choice.key_env, api_key)
+
+
+def validate_model_key(choice: ModelChoice, api_key: str) -> None:
+    """Perform a small authenticated request before continuing to Weixin."""
+
+    if choice.provider == "openrouter":
+        url = f"{OPENROUTER_BASE_URL}/key"
+    else:
+        url = f"{choice.base_url.rstrip('/')}/models"
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            if not 200 <= int(response.status) < 300:
+                raise ValueError(f"模型服务返回 HTTP {response.status}")
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise ValueError("API Key 无效或没有访问权限") from exc
+        raise ValueError(f"模型服务返回 HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise ValueError(f"无法连接模型服务：{exc.reason}") from exc
+
+
+def _choose_model(input_fn: Callable[[str], str]) -> ModelChoice:
+    provider = input_fn(
+        "模型服务：1) OpenAI 兼容服务（默认）  2) OpenRouter [1]: "
+    ).strip()
+    if provider in {"", "1"}:
+        base_url = input_fn("Base URL（例如 https://api.example.com/v1）: ").strip()
+        model = input_fn("Model ID: ").strip()
+        if not base_url.startswith(("https://", "http://")) or not model:
+            raise ValueError("需要有效的 Base URL 和 Model ID")
+        return ModelChoice("custom", model, base_url.rstrip("/"), "H2OS_MODEL_API_KEY")
+    if provider == "2":
+        model = input_fn(
+            f"模型 [{RECOMMENDED_OPENROUTER_MODEL}]: "
+        ).strip() or RECOMMENDED_OPENROUTER_MODEL
+        return ModelChoice("openrouter", model, OPENROUTER_BASE_URL, "OPENROUTER_API_KEY")
+    raise ValueError("请选择 1 或 2")
+
+
+def _has_weixin_credentials(home: Path) -> bool:
+    env_path = home / ".env"
+    if not env_path.exists():
+        return False
+    keys = {
+        line.split("=", 1)[0].strip()
+        for line in env_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#") and "=" in line
+    }
+    return {"WEIXIN_ACCOUNT_ID", "WEIXIN_TOKEN"}.issubset(keys)
+
+
+def run_setup(
+    home: Path,
+    *,
+    input_fn: Callable[[str], str] = input,
+    secret_fn: Callable[[str], str] = getpass.getpass,
+    validate_fn: Callable[[ModelChoice, str], None] = validate_model_key,
+    weixin_setup_fn=None,
+    gateway_run_fn=None,
+) -> int:
+    """Run the setup flow in the only valid product order."""
+
+    resolved = home.expanduser().resolve()
+    if weixin_setup_fn is None:
+        from h2os_cli.channels import setup_weixin
+
+        weixin_setup_fn = setup_weixin
+    if gateway_run_fn is None:
+        from h2os_cli.runtime import run_gateway_command
+
+        gateway_run_fn = run_gateway_command
+
+    print("H2OS 设置：Base URL / 模型 / API Key → 微信 → 启动")
+    try:
+        choice = _choose_model(input_fn)
+        api_key = secret_fn("API Key（输入不会显示）: ").strip()
+        if not api_key:
+            raise ValueError("API Key 不能为空")
+        print("正在验证模型服务…")
+        validate_fn(choice, api_key)
+        configure_model(resolved, choice, api_key)
+        print(f"✓ 模型已连接：{choice.model}")
+    except (ValueError, KeyboardInterrupt) as exc:
+        message = str(exc) if str(exc) else "设置已取消"
+        print(f"H2OS 设置失败：{message}", file=os.sys.stderr)
+        return 1
+
+    if _has_weixin_credentials(resolved):
+        reuse = input_fn("检测到已绑定微信，继续使用？[Y/n]: ").strip().lower()
+        if reuse not in {"", "y", "yes"}:
+            channel_result = weixin_setup_fn(resolved)
+        else:
+            channel_result = 0
+            print("✓ 继续使用已绑定的微信")
+    else:
+        channel_result = weixin_setup_fn(resolved)
+    if channel_result != 0:
+        return channel_result
+
+    installed = gateway_run_fn(
+        "install", home=resolved, arguments=("--no-start-now",)
+    )
+    if installed != 0:
+        return installed
+    started = gateway_run_fn("start", home=resolved)
+    if started == 0:
+        print("✓ H2OS 已启动，现在可以去微信聊天。")
+    return started
