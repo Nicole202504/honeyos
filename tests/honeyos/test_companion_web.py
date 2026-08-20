@@ -356,8 +356,8 @@ def test_companion_assets_define_relationship_native_run_ui():
     index = (assets / "index.html").read_text(encoding="utf-8")
     app = (assets / "app.js").read_text(encoding="utf-8")
 
-    assert 'src="./run-state.js"' in index
-    assert 'src="./message-format.js"' in index
+    assert 'src="./run-state.js?' in index
+    assert 'src="./message-format.js?' in index
     assert 'id="presence-line"' in index
     assert 'id="action-trail"' in index
     assert 'id="scroll-to-latest"' in index

@@ -4,7 +4,13 @@
 
 ## 什么时候使用 Builder
 
-只有用户明确要求修改 HoneyOS 产品本身时才召回内置 `honeyos-builder` Skill，例如修改聊天页面、伴侣活动文案、普通内置伴侣 Skill，或在稳定扩展目录中增加功能。
+只有用户明确要求修改 HoneyOS 产品本身时才召回内置 `honeyos-builder` Skill，例如修改聊天页面、伴侣活动文案、普通内置伴侣 Skill，或在稳定扩展目录中增加功能。聊天页面的静态资源使用即时覆盖层；其余产品代码才进入候选换版流程。
+
+## 网页即时覆盖层
+
+`honeyos/companion/web_assets/**` 不再为了样式和交互调整创建完整候选版本。用户可编辑文件位于 `~/HoneyOS Projects/HoneyOS UI/web_assets/`（若配置了 `HONEYOS_PROJECTS_HOME`，则位于该目录下）。网关每次响应静态资源时优先读取这里存在的同名文件，不存在则回退到安装包内置文件。
+
+因此网页修改的流程是：复制待改文件到覆盖层、备份已有覆盖、修改并静态检查、刷新浏览器。它不会切换运行槽，不会执行健康检查，也不会重启聊天服务。删除覆盖文件即可恢复内置版本。
 
 下列请求不进入 Builder：
 
@@ -17,10 +23,9 @@
 
 候选工作区是从固定 Git 版本复制出的**部分工作区**，没有 `.git`，也不会包含当前用户的 `~/.honeyos` 数据。
 
-允许进入候选工作区的范围：
+允许进入非网页候选工作区的范围：
 
 ```text
-honeyos/companion/web_assets/**
 honeyos/companion/activity.py
 honeyos/companion/status_copy.py
 honeyos/companion/topic_scout.py

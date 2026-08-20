@@ -448,7 +448,7 @@ def test_static_activation_surface_blocks_control_plane_even_when_all_metadata_i
     assert path in report.protected_changes
 
 
-def test_static_activation_surface_keeps_safe_companion_ui_reviewable(tmp_path):
+def test_static_web_assets_use_live_override_instead_of_builder_activation(tmp_path):
     from honeyos.companion.builder_workspace import inspect_builder_change
 
     prepared = _prepared_change(tmp_path, allowed_paths=("**",))
@@ -458,5 +458,31 @@ def test_static_activation_surface_keeps_safe_companion_ui_reviewable(tmp_path):
 
     report = inspect_builder_change(prepared.change_root)
 
-    assert report.status == "review_ready"
-    assert report.allowed_changes == ("honeyos/companion/web_assets/styles.css",)
+    assert report.status == "blocked"
+    assert report.out_of_scope_changes == (
+        "honeyos/companion/web_assets/styles.css",
+    )
+
+
+def test_discard_builder_change_removes_only_the_named_candidate(tmp_path):
+    from honeyos.companion.builder_workspace import discard_builder_change
+
+    builder_root = tmp_path / "projects" / "HoneyOS Builder"
+    state_root = tmp_path / ".honeyos" / "builder"
+    target_workspace = builder_root / "changes" / "ui-change-001"
+    target_state = state_root / "changes" / "ui-change-001"
+    sibling = builder_root / "changes" / "keep-change-002"
+    for path in (target_workspace, target_state, sibling):
+        path.mkdir(parents=True)
+        (path / "marker").write_text("keep", encoding="utf-8")
+
+    removed = discard_builder_change(
+        builder_root=builder_root,
+        change_id="ui-change-001",
+        state_root=state_root,
+    )
+
+    assert removed == (target_state.resolve(), target_workspace.resolve())
+    assert not target_state.exists()
+    assert not target_workspace.exists()
+    assert sibling.is_dir()

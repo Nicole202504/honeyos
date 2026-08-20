@@ -1,6 +1,20 @@
 (function (root) {
   "use strict";
 
+  const HIDDEN_IMAGE_DATA = "[图片数据已隐藏]";
+  const HIDDEN_LONG_DATA = "[过长的数据已隐藏]";
+  const HIDDEN_LONG_LINK = "[过长的链接已隐藏]";
+
+  function displayText(source) {
+    return String(source || "")
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]{256,}/gi,
+        HIDDEN_IMAGE_DATA,
+      )
+      .replace(/https?:\/\/[^\s]{500,}/gi, HIDDEN_LONG_LINK)
+      .replace(/[a-z0-9+/]{512,}={0,2}/gi, HIDDEN_LONG_DATA);
+  }
+
   function inline(text) {
     const tokens = [];
     const pattern = /(\*\*([^*\n]+)\*\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))/g;
@@ -37,7 +51,7 @@
   }
 
   function parse(source) {
-    const lines = String(source || "").replace(/\r\n?/g, "\n").split("\n");
+    const lines = displayText(source).replace(/\r\n?/g, "\n").split("\n");
     const blocks = [];
     let index = 0;
 
@@ -78,14 +92,26 @@
       const list = line.match(/^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/);
       if (list) {
         const ordered = Boolean(list[2]);
+        const start = ordered ? Number(list[2]) : 1;
         const items = [];
         while (index < lines.length) {
           const item = lines[index].match(/^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/);
           if (!item || Boolean(item[2]) !== ordered) break;
           items.push(inline(item[3].trim()));
           index += 1;
+          let nextIndex = index;
+          while (nextIndex < lines.length && !lines[nextIndex].trim()) {
+            nextIndex += 1;
+          }
+          const nextItem =
+            nextIndex < lines.length
+              ? lines[nextIndex].match(/^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/)
+              : null;
+          if (nextItem && Boolean(nextItem[2]) === ordered) {
+            index = nextIndex;
+          }
         }
-        blocks.push({ type: ordered ? "ol" : "ul", items });
+        blocks.push({ type: ordered ? "ol" : "ul", items, start });
         continue;
       }
       if (/^\s*```/.test(line)) {
@@ -155,9 +181,13 @@
       }
       if (block.type === "ul" || block.type === "ol") {
         const list = document.createElement(block.type);
+        if (block.type === "ol" && block.start > 1) list.start = block.start;
         for (const item of block.items) {
           const li = document.createElement("li");
-          appendInline(li, item);
+          const content = document.createElement("span");
+          content.className = "list-item-content";
+          appendInline(content, item);
+          li.append(content);
           list.append(li);
         }
         fragment.append(list);
@@ -172,5 +202,5 @@
     container.replaceChildren(fragment);
   }
 
-  root.HoneyOSMessageFormat = Object.freeze({ parse, render });
+  root.HoneyOSMessageFormat = Object.freeze({ displayText, parse, render });
 })(typeof window !== "undefined" ? window : globalThis);

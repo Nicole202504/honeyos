@@ -101,6 +101,17 @@ def test_companion_messages_expose_polished_actions_and_activity_disclosure():
     assert 'summaryButton.className = "activity-summary"' in script
 
 
+def test_streaming_turn_renders_ordered_text_tool_and_permission_parts():
+    script = (ASSETS / "app.js").read_text(encoding="utf-8")
+
+    assert "function renderOrderedTurn(state)" in script
+    assert 'part.type === "text"' in script
+    assert 'part.type === "tool"' in script
+    assert 'part.type === "permission"' in script
+    assert "activeTurnPartNodes" in script
+    assert 'if (name === "assistant.delta" && payload.delta)' not in script
+
+
 def test_companion_component_styles_cover_tokens_accessibility_and_responsiveness():
     styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
 
@@ -212,4 +223,4 @@ def test_history_layout_uses_shared_radii_and_theme_surfaces():
     assert ".history-message.assistant { background: var(--surface-muted); }" in styles
     assert ".history-message.user { background: var(--user-message); }" in styles
     assert "message.content.trim().length > 0" in script
-    assert "bubble.textContent = message.content.trim()" in script
+    assert "HoneyOSMessageFormat.displayText(message.content.trim())" in script

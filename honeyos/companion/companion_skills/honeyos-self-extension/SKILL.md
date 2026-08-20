@@ -14,7 +14,7 @@ metadata:
 
 # HoneyOS Self Extension Skill
 
-让 HoneyOS 在能力不足时先检查现状，再选择已有工具、安装普通 Skill 或创建小型 Skill。它扩展边缘能力；用户明确要求产品级改造时转交 `honeyos-builder`，不能直接修改正在运行的 HoneyOS。
+让 HoneyOS 在能力不足时先检查现状，再选择已有工具、安装普通 Skill 或创建小型 Skill。它扩展边缘能力；用户明确要求产品级改造时转交 `honeyos-builder`。纯网页静态资源使用项目内即时覆盖层，其他运行代码不能直接修改。
 
 ## When to Use
 
@@ -45,7 +45,7 @@ metadata:
 - 修改人格、关系和记忆内容时使用专用资料或记忆工具。
 - 独立的新能力优先安装或创建普通 Skill。
 - 记忆机制、Web 页面、IM 适配、Session 或 Runtime 等产品级改造转交 `honeyos-builder`。
-- `honeyos-builder` 只能在隔离候选副本中工作；不能直接修改正在运行的 HoneyOS，也不自动安装候选版本。
+- `honeyos-builder` 对纯网页静态资源使用 `HoneyOS UI` 即时覆盖层；其他产品代码只能在隔离候选副本中工作，不能直接修改正在运行的 HoneyOS，也不自动安装候选版本。
 
 ## Quick Reference
 

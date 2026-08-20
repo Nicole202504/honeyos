@@ -13,6 +13,7 @@ import fnmatch
 import hashlib
 import json
 import re
+import shutil
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -128,14 +129,14 @@ DEFAULT_PROTECTED_PATHS = (
 # a broad task scope nor same-user edits to metadata can expand this list.
 #
 # Keep this deliberately explicit.  Companion product behavior, personality,
-# memories, ordinary companion skills, and the browser presentation are safe
-# to review/activate.  Configuration, installation, status/health, the
+# memories and ordinary companion skills are safe to review/activate. Browser
+# presentation uses the project-local live override layer instead. Configuration,
+# installation, status/health, the
 # project/filesystem boundary, permission UI, and Builder wiring stay trusted.
 DEFAULT_ACTIVATABLE_PATHS = (
     "honeyos/companion/activity.py",
     "honeyos/companion/status_copy.py",
     "honeyos/companion/topic_scout.py",
-    "honeyos/companion/web_assets/**",
     # A deliberately small extension point for a new ordinary companion tool.
     # Nothing under honeyos/tools is exposed: it dispatches model calls and
     # owns execution/approval policy.
@@ -147,7 +148,7 @@ DEFAULT_ACTIVATABLE_PATHS = (
 # This version is intentionally owned by the running trusted control plane,
 # rather than by a candidate manifest.  Older manifests must be recreated so a
 # candidate cannot dilute a newly added safety boundary by editing JSON.
-BUILDER_POLICY_VERSION = 3
+BUILDER_POLICY_VERSION = 4
 TRUSTED_POLICY_SCHEMA_VERSION = 1
 
 
@@ -469,6 +470,39 @@ def prepare_builder_change(
         manifest_path=manifest_path,
         trusted_policy_path=trusted_policy_path,
     )
+
+
+def discard_builder_change(
+    *,
+    builder_root: Path | str,
+    change_id: str,
+    state_root: Path | str | None = None,
+) -> tuple[Path, ...]:
+    """Remove exactly one named, inactive Builder candidate workspace.
+
+    Both roots are supplied by trusted CLI configuration.  The validated ID
+    is appended below fixed ``changes`` directories, so this operation cannot
+    expand to a parent directory or an unrelated project.
+    """
+
+    normalized_id = _validate_change_id(change_id)
+    workspace_root = Path(builder_root).expanduser().resolve()
+    policy_root = (
+        Path(state_root).expanduser().resolve()
+        if state_root is not None
+        else workspace_root
+    )
+    candidates = (
+        policy_root / "changes" / normalized_id,
+        workspace_root / "changes" / normalized_id,
+    )
+    removed: list[Path] = []
+    for target in dict.fromkeys(candidates):
+        if not target.exists():
+            continue
+        shutil.rmtree(target)
+        removed.append(target)
+    return tuple(removed)
 
 
 def _is_ephemeral_ignored(path: str) -> bool:

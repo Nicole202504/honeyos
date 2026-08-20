@@ -202,7 +202,7 @@ HoneyOS 在用户电脑上使用真实的本机终端，默认把游戏、网页
 
 HoneyOS 内置 `honeyos-builder` Skill。只有用户明确要求修改 HoneyOS 自身的页面、伴侣活动文案、普通内置伴侣 Skill 或稳定扩展点时才会触发。普通 Skill 安装、用户项目 Coding、人格与记忆修改、模型和语音设置都不走这条换版流程。
 
-Builder 只把明确允许的产品文件复制到候选工作区。用户确认后，HoneyOS 会保留上一版本、切换候选版本并自动重启；新版本未能通过健康检查时会自动恢复旧版本。用户的模型配置、IM 凭据、关系记忆和聊天历史始终留在原来的 `~/.honeyos`，不会复制进候选代码目录。
+只涉及网页 HTML、CSS 和 JavaScript 的修改会直接写入 `~/HoneyOS Projects/HoneyOS UI/` 即时覆盖层，刷新页面即可看到，不需要重启聊天服务。其他产品代码仍使用 Builder 的受检候选流程：检查通过后再换版，启动失败时恢复上一版本。用户的模型配置、IM 凭据、关系记忆和聊天历史始终留在原来的 `~/.honeyos`，不会复制进候选代码目录。
 
 完整的目录边界、状态机、CLI 与测试入口见 [HoneyOS Builder 研发说明](docs/HONEYOS_BUILDER.md)。
 
@@ -216,6 +216,29 @@ Builder 只把明确允许的产品文件复制到候选工作区。用户确认
 ~/.local/bin/honeyos stop
 ~/.local/bin/honeyos start
 ```
+
+### 网页提示断开连接时如何恢复
+
+HoneyOS 默认作为后台服务运行，意外退出后 macOS 或 Linux 通常会自动重新启动它。如果等待几秒后网页仍然连不上，打开终端运行：
+
+```bash
+~/.local/bin/honeyos restart
+```
+
+这个命令只会重启 HoneyOS 服务，不会删除伴侣人设、关系记忆、历史对话、API Key 或微信/飞书连接。等待几秒后，重新打开本地聊天网页：
+
+```bash
+~/.local/bin/honeyos web
+```
+
+如果仍未恢复，可运行下面两条命令检查本机状态：
+
+```bash
+~/.local/bin/honeyos doctor
+~/.local/bin/honeyos logs
+```
+
+寻求帮助时只提供相关错误行，不要粘贴 API Key、微信 Token、飞书 Secret 或整个 `~/.honeyos` 目录。
 
 重新填写模型或重新连接 IM：
 
