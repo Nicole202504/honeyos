@@ -2292,12 +2292,14 @@ class APIServerAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _companion_asset_path(filename: str) -> Path:
-        return (
+        from honeyos.companion.web_customization import resolve_companion_web_asset
+
+        bundled_root = (
             Path(__file__).resolve().parents[2]
             / "companion"
             / "web_assets"
-            / filename
         )
+        return resolve_companion_web_asset(bundled_root, filename)
 
     @staticmethod
     def _request_is_loopback(request: "web.Request") -> bool:

@@ -20,9 +20,77 @@
       content: "",
       presence: null,
       activities: [],
+      parts: [],
       permission: null,
       error: "",
     };
+  }
+
+  function finishOpenText(parts, updatedAt) {
+    return parts.map((part) =>
+      part.type === "text" && part.state === "streaming"
+        ? { ...part, state: "completed", updatedAt }
+        : part,
+    );
+  }
+
+  function appendText(parts, delta, updatedAt) {
+    const value = String(delta || "");
+    if (!value) return parts;
+    const last = parts[parts.length - 1];
+    if (last && last.type === "text" && last.state === "streaming") {
+      return parts.map((part, index) =>
+        index === parts.length - 1
+          ? { ...part, content: part.content + value, updatedAt }
+          : part,
+      );
+    }
+    return [
+      ...finishOpenText(parts, updatedAt),
+      {
+        id: "text-" + (parts.length + 1),
+        type: "text",
+        content: value,
+        state: "streaming",
+        startedAt: updatedAt,
+        updatedAt,
+      },
+    ];
+  }
+
+  function upsertToolPart(parts, activity, updatedAt) {
+    const id = "tool-" + String(activity.activity_id || "activity");
+    const index = parts.findIndex((part) => part.id === id);
+    const existing = index >= 0 ? parts[index] : null;
+    const next = {
+      id,
+      type: "tool",
+      activity: {
+        ...activity,
+        startedAt: existing ? existing.startedAt : activity.startedAt,
+        updatedAt,
+      },
+      state: String(activity.state || "active"),
+      startedAt: existing ? existing.startedAt : updatedAt,
+      updatedAt,
+    };
+    if (index < 0) return [...finishOpenText(parts, updatedAt), next];
+    return parts.map((part, partIndex) => (partIndex === index ? next : part));
+  }
+
+  function upsertPermissionPart(parts, permission, updatedAt) {
+    const id = "permission-" + permission.approval_id;
+    const index = parts.findIndex((part) => part.id === id);
+    const next = {
+      id,
+      type: "permission",
+      permission,
+      state: "awaiting",
+      startedAt: index >= 0 ? parts[index].startedAt : updatedAt,
+      updatedAt,
+    };
+    if (index < 0) return [...finishOpenText(parts, updatedAt), next];
+    return parts.map((part, partIndex) => (partIndex === index ? next : part));
   }
 
   function upsertActivity(activities, next, updatedAt) {
@@ -38,6 +106,7 @@
       startedAt: existing ? existing.startedAt : updatedAt,
       updatedAt,
     };
+    if (next.tool_label) safeNext.tool_label = String(next.tool_label);
     const index = activities.findIndex(
       (item) => item.activity_id === safeNext.activity_id,
     );
@@ -65,14 +134,21 @@
       };
     }
     if (name.startsWith("tool.") && payload.activity) {
+      const activities = upsertActivity(
+        current.activities,
+        payload.activity,
+        updatedAt,
+      );
+      const activity = activities.find(
+        (item) =>
+          item.activity_id ===
+          String(payload.activity.activity_id || "activity"),
+      );
       return {
         ...current,
         phase: "acting",
-        activities: upsertActivity(
-          current.activities,
-          payload.activity,
-          updatedAt,
-        ),
+        activities,
+        parts: upsertToolPart(current.parts || [], activity, updatedAt),
         updatedAt,
       };
     }
@@ -81,29 +157,43 @@
         ...current,
         phase: "responding",
         content: current.content + String(payload.delta || ""),
+        parts: appendText(current.parts || [], payload.delta, updatedAt),
         updatedAt,
       };
     }
     if (name === "approval.request") {
+      const permission = {
+        approval_id: String(payload.approval_id || "approval"),
+        narration: String(payload.narration || ""),
+        summary: String(payload.summary || "需要你确认这一步"),
+        boundaries: Array.isArray(payload.boundaries) ? payload.boundaries.map(String) : [],
+        technical_detail: String(payload.technical_detail || ""),
+        choices: Array.isArray(payload.choices) ? payload.choices.map(String) : ["once", "deny"],
+      };
       return {
         ...current,
         phase: "awaiting_permission",
-        permission: {
-          approval_id: String(payload.approval_id || "approval"),
-          narration: String(payload.narration || ""),
-          summary: String(payload.summary || "需要你确认这一步"),
-          boundaries: Array.isArray(payload.boundaries) ? payload.boundaries.map(String) : [],
-          technical_detail: String(payload.technical_detail || ""),
-          choices: Array.isArray(payload.choices) ? payload.choices.map(String) : ["once", "deny"],
-        },
+        permission,
+        parts: upsertPermissionPart(current.parts || [], permission, updatedAt),
         updatedAt,
       };
     }
     if (name === "approval.responded") {
+      const parts = (current.parts || []).map((part) =>
+        part.type === "permission" && part.state === "awaiting"
+          ? {
+              ...part,
+              state: payload.choice === "deny" ? "denied" : "completed",
+              choice: String(payload.choice || ""),
+              updatedAt,
+            }
+          : part,
+      );
       return {
         ...current,
         phase: "acting",
         permission: null,
+        parts,
         presence: {
           activity_id: "permission-resumed",
           kind: "presence",
@@ -115,10 +205,18 @@
       };
     }
     if (name === "assistant.completed") {
+      let parts = finishOpenText(current.parts || [], updatedAt);
+      const content = String(payload.content || current.content);
+      if (content && !parts.some((part) => part.type === "text")) {
+        parts = appendText(parts, content, updatedAt).map((part) =>
+          part.type === "text" ? { ...part, state: "completed" } : part,
+        );
+      }
       return {
         ...current,
         phase: "completed",
-        content: String(payload.content || current.content),
+        content,
+        parts,
         updatedAt,
       };
     }

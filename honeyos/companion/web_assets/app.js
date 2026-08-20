@@ -6,6 +6,8 @@ const elements = {
   send: document.querySelector("#send-button"),
   name: document.querySelector("#companion-name"),
   status: document.querySelector("#companion-status"),
+  presenceStageName: document.querySelector("#presence-stage-name"),
+  presenceStageStatus: document.querySelector("#presence-stage-status"),
   avatar: document.querySelector("#avatar"),
   statusAvatar: document.querySelector("#status-avatar"),
   turnStatus: document.querySelector("#turn-status"),
@@ -26,6 +28,7 @@ const elements = {
   navigationItems: Array.from(document.querySelectorAll(".navigation-item")),
   memoryList: document.querySelector("#memory-list"),
   memoryCount: document.querySelector("#memory-count"),
+  memorySyncStatus: document.querySelector("#memory-sync-status"),
   memoryTabs: Array.from(document.querySelectorAll("[data-memory-filter]")),
   profileForm: document.querySelector("#profile-form"),
   profileFormStatus: document.querySelector("#profile-form-status"),
@@ -69,6 +72,8 @@ const elements = {
 let sessionId = "";
 let sessionKey = "";
 let activeAssistantBubble = null;
+let activeTurnPartNodes = new Map();
+let activeTurnActionsAdded = false;
 let sending = false;
 const pendingMessages = [];
 let turnState = HoneyOSRunState.create(Date.now());
@@ -82,12 +87,17 @@ let activeView = "chat";
 let memoryFilter = "all";
 let companionData = {
   memories: [],
+  chapters: [],
+  distillation: {},
   history: [],
   profile: {},
   settings: {},
 };
 let toastTimer = null;
 let channelLinkPollTimer = null;
+const MEMORY_SYNC_MAX_ATTEMPTS = 40;
+const MEMORY_SYNC_STARTUP_GRACE_ATTEMPTS = 3;
+const MEMORY_SYNC_POLL_INTERVAL_MS = 3_000;
 
 const providerBaseUrls = {
   "openai-api": "https://api.openai.com/v1",
@@ -104,6 +114,98 @@ function setAvatarLabel(name) {
   companionAvatarLabel = avatarLabel(name, "H");
   document.querySelectorAll('[data-avatar-surface="companion"]').forEach((surface) => {
     surface.textContent = companionAvatarLabel;
+  });
+}
+
+const AVATAR_STORAGE_KEYS = {
+  companion: "honeyos-avatar-companion",
+  user: "honeyos-avatar-user",
+};
+
+function getAvatarImage(surface) {
+  try {
+    return window.localStorage.getItem(AVATAR_STORAGE_KEYS[surface]) || "";
+  } catch {
+    return "";
+  }
+}
+
+function setAvatarImage(surface, dataUrl) {
+  try {
+    if (dataUrl) window.localStorage.setItem(AVATAR_STORAGE_KEYS[surface], dataUrl);
+    else window.localStorage.removeItem(AVATAR_STORAGE_KEYS[surface]);
+  } catch {
+    // Storage may be full or unavailable; the letter avatar still works.
+  }
+}
+
+function applyAvatarImage(surfaceElement) {
+  const surface = surfaceElement.dataset.avatarSurface;
+  if (!surface) return;
+  const image = getAvatarImage(surface);
+  if (image) {
+    surfaceElement.style.backgroundImage = 'url("' + image.replace(/"/g, "%22") + '")';
+    surfaceElement.classList.add("has-image");
+  } else {
+    surfaceElement.style.backgroundImage = "";
+    surfaceElement.classList.remove("has-image");
+  }
+}
+
+function applyAvatarImages() {
+  document.querySelectorAll("[data-avatar-surface]").forEach(applyAvatarImage);
+}
+
+function readAvatarFile(file, callback) {
+  if (!file || !file.type.startsWith("image/")) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const image = new Image();
+    image.onload = () => {
+      const MAX = 256;
+      const scale = Math.min(1, MAX / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      callback(canvas.toDataURL("image/jpeg", 0.86));
+    };
+    image.onerror = () => callback("");
+    image.src = String(reader.result);
+  };
+  reader.onerror = () => callback("");
+  reader.readAsDataURL(file);
+}
+
+function setupAvatarPickers() {
+  document.querySelectorAll("[data-avatar-file]").forEach((input) => {
+    const surface = input.dataset.avatarFile;
+    const choose = document.querySelector('[data-avatar-choose="' + surface + '"]');
+    const remove = document.querySelector('[data-avatar-remove="' + surface + '"]');
+    choose.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      readAvatarFile(file, (dataUrl) => {
+        if (!dataUrl) {
+          showToast("这张图片没读出来，换一张试试");
+          return;
+        }
+        setAvatarImage(surface, dataUrl);
+        applyAvatarImages();
+        remove.hidden = false;
+        showToast(surface === "companion" ? "它的头像换好了" : "你的头像换好了");
+      });
+      input.value = "";
+    });
+    if (getAvatarImage(surface)) remove.hidden = false;
+    remove.addEventListener("click", () => {
+      setAvatarImage(surface, "");
+      applyAvatarImages();
+      remove.hidden = true;
+      showToast(surface === "companion" ? "头像已移除，回到首字头像" : "头像已移除，回到字头像");
+    });
   });
 }
 
@@ -153,6 +255,9 @@ function openView(viewName) {
       elements.input?.focus();
     });
   }
+  if (viewName === "memories") {
+    void refreshMemories();
+  }
 }
 
 function formatDate(value, options = {}) {
@@ -180,6 +285,7 @@ function memoryKindLabel(kind) {
     temporary_state: "最近",
     commitment: "答应过的",
     episode: "共同经历",
+    conversation_chapter: "共同经历",
     open_loop: "待续",
   }[kind] || "记忆";
 }
@@ -279,16 +385,68 @@ function renderMemoryCard(memory) {
   return card;
 }
 
+function renderChapterCard(chapter) {
+  const card = document.createElement("article");
+  card.className = "memory-card conversation-chapter-card";
+  card.dataset.kind = "conversation_chapter";
+
+  const header = document.createElement("div");
+  header.className = "memory-card-header";
+  const kind = document.createElement("span");
+  kind.className = "memory-kind";
+  kind.textContent = "共同经历";
+  const date = document.createElement("span");
+  date.className = "memory-expiry";
+  date.textContent = formatDate(chapter.created_at, { relative: true });
+  header.append(kind, date);
+
+  const title = document.createElement("h2");
+  title.textContent = chapter.title || "一段共同经历";
+  const summary = document.createElement("p");
+  summary.textContent = chapter.summary || "这段聊天已经保留下来。";
+  const provenance = document.createElement("p");
+  provenance.className = "memory-provenance";
+  provenance.textContent = "来自真实聊天 · 不会作为用户画像注入模型";
+
+  card.append(header, title, summary, provenance);
+  return card;
+}
+
+function renderMemorySyncStatus() {
+  if (!elements.memorySyncStatus) return;
+  const status = companionData.distillation?.status || "idle";
+  elements.memorySyncStatus.dataset.status = status;
+  elements.memorySyncStatus.textContent = {
+    pending: "正在等待整理刚才的聊天…",
+    running: "正在整理刚才的聊天…",
+    completed: "最近一次聊天已整理完成",
+    failed: "最近一次整理没有完成，系统会自动重试",
+    unavailable: "记忆状态暂时不可用",
+    idle: "聊满一段后，会自动整理成可回看的共同经历",
+  }[status] || "记忆会在聊天后自动更新";
+}
+
 function renderMemories() {
   if (!elements.memoryList) return;
-  const memories = companionData.memories.filter(
-    (memory) => memoryFilter === "all" || memory.kind === memoryFilter,
-  );
+  const memories = companionData.memories
+    .filter(
+      (memory) =>
+        memoryFilter === "all" ||
+        memory.kind === memoryFilter ||
+        (memoryFilter === "conversation_chapter" && memory.kind === "episode"),
+    )
+    .map((memory) => ({ type: "memory", value: memory }));
+  const chapters = companionData.chapters
+    .filter(() => memoryFilter === "all" || memoryFilter === "conversation_chapter")
+    .map((chapter) => ({ type: "chapter", value: chapter }));
+  const visibleItems = [...chapters, ...memories];
   if (elements.memoryCount) {
-    elements.memoryCount.textContent = String(companionData.memories.length);
-    elements.memoryCount.hidden = companionData.memories.length === 0;
+    const count = companionData.memories.length + companionData.chapters.length;
+    elements.memoryCount.textContent = String(count);
+    elements.memoryCount.hidden = count === 0;
   }
-  if (!memories.length) {
+  renderMemorySyncStatus();
+  if (!visibleItems.length) {
     elements.memoryList.replaceChildren(
       emptyPageState(
         memoryFilter === "all" ? "还没有整理出需要延续的事情" : "这一类暂时是空的",
@@ -297,7 +455,41 @@ function renderMemories() {
     );
     return;
   }
-  elements.memoryList.replaceChildren(...memories.map(renderMemoryCard));
+  elements.memoryList.replaceChildren(
+    ...visibleItems.map((item) =>
+      item.type === "chapter" ? renderChapterCard(item.value) : renderMemoryCard(item.value),
+    ),
+  );
+}
+
+async function refreshMemories(options = {}) {
+  try {
+    const response = await fetch("/api/companion/memories", {
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error("memory_snapshot_unavailable");
+    const data = await response.json();
+    companionData.memories = Array.isArray(data.memories) ? data.memories : [];
+    companionData.chapters = Array.isArray(data.chapters) ? data.chapters : [];
+    companionData.distillation = data.distillation || {};
+    renderMemories();
+  } catch {
+    companionData.distillation = { status: "unavailable" };
+    renderMemorySyncStatus();
+  }
+  const attempt = Number(options.attempt || 0);
+  const status = companionData.distillation?.status || "idle";
+  const withinStartupGrace = attempt < MEMORY_SYNC_STARTUP_GRACE_ATTEMPTS;
+  if (
+    options.follow &&
+    (withinStartupGrace || ["pending", "running"].includes(status)) &&
+    attempt < MEMORY_SYNC_MAX_ATTEMPTS
+  ) {
+    window.setTimeout(
+      () => void refreshMemories({ follow: true, attempt: attempt + 1 }),
+      MEMORY_SYNC_POLL_INTERVAL_MS,
+    );
+  }
 }
 
 function fillProfileForm(profile) {
@@ -340,6 +532,7 @@ async function saveProfile(event) {
     fillProfileForm(companionData.profile);
     const name = companionData.profile.companion_name || "Honey";
     elements.name.textContent = name;
+    if (elements.presenceStageName) elements.presenceStageName.textContent = name;
     setAvatarLabel(name);
     elements.profileFormStatus.textContent = "已保存";
     showToast("你们的资料已经更新");
@@ -418,7 +611,7 @@ async function loadHistoryPreview(item, button) {
     for (const message of messages) {
       const bubble = document.createElement("p");
       bubble.className = "history-message " + message.role;
-      bubble.textContent = message.content.trim();
+      bubble.textContent = HoneyOSMessageFormat.displayText(message.content.trim());
       transcript.append(bubble);
     }
     if (!messages.length) transcript.append(emptyPageState("这段聊天没有可显示的消息", "工具过程不会出现在这里。"));
@@ -449,6 +642,8 @@ async function startNewConversation() {
 
 function hydrateCompanionPages(data) {
   companionData.memories = Array.isArray(data.memories) ? data.memories : [];
+  companionData.chapters = Array.isArray(data.chapters) ? data.chapters : [];
+  companionData.distillation = data.distillation || {};
   companionData.history = Array.isArray(data.history) ? data.history : [];
   companionData.profile = data.profile_details || {};
   companionData.settings = data.settings || {};
@@ -872,6 +1067,7 @@ function createMessage(role) {
   avatar.setAttribute("aria-hidden", "true");
   avatar.dataset.avatarSurface = role === "user" ? "user" : "companion";
   avatar.textContent = role === "user" ? "你" : companionAvatarLabel;
+  applyAvatarImage(avatar);
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   if (role === "user") row.append(bubble, avatar);
@@ -919,6 +1115,181 @@ function renderMessage(bubble, role, content) {
   bubble.textContent = content;
 }
 
+function orderedToolLabel(activity) {
+  if (activity.tool_label) return activity.tool_label;
+  return {
+    checking: "查询信息",
+    reading: "读取内容",
+    making: "修改内容",
+    remembering: "保存信息",
+    handling: "本地操作",
+  }[activity.kind] || "本地操作";
+}
+
+function renderOrderedToolPart(node, part) {
+  const activity = part.activity || {};
+  const wasOpen = node.open;
+  node.className = "turn-part turn-tool activity-card";
+  node.dataset.state = activity.state || part.state || "active";
+
+  const summary = document.createElement("summary");
+  summary.className = "activity-summary";
+  const copy = document.createElement("div");
+  copy.className = "activity-copy";
+  const title = document.createElement("p");
+  title.textContent = activity.title || "正在替你处理";
+  const meta = document.createElement("span");
+  meta.className = "activity-meta";
+  meta.textContent =
+    orderedToolLabel(activity) + "，" + activityStatusLabel(activity);
+  copy.append(title, meta);
+
+  const toggle = document.createElement("span");
+  toggle.className = "activity-toggle";
+  toggle.setAttribute("aria-hidden", "true");
+  toggle.append(createIcon("chevron-down"));
+
+  const steps = document.createElement("ul");
+  steps.className = "activity-steps";
+  const step = document.createElement("li");
+  step.className = "activity-step";
+  step.dataset.state = activity.state || "active";
+  const stepCopy = document.createElement("div");
+  stepCopy.className = "activity-step-copy";
+  const stepTitle = document.createElement("p");
+  stepTitle.textContent = orderedToolLabel(activity);
+  const stepDetail = document.createElement("span");
+  stepDetail.textContent =
+    activity.detail || activity.title || "正在执行这一步";
+  stepCopy.append(stepTitle, stepDetail);
+  const state = document.createElement("span");
+  state.className = "activity-step-state";
+  state.textContent = activityStatusLabel(activity);
+  step.append(stepCopy, state);
+  steps.append(step);
+
+  summary.append(copy, toggle);
+  node.replaceChildren(summary, steps);
+  node.open = wasOpen;
+}
+
+function renderOrderedPermissionPart(node, part) {
+  const permission = part.permission || {};
+  node.className = "turn-part turn-part-permission";
+  node.dataset.turnPermission = permission.approval_id || "approval";
+  const card = document.createElement("section");
+  card.className = "permission-card-inner";
+
+  const narration = document.createElement("p");
+  narration.className = "permission-narration";
+  narration.textContent =
+    permission.narration || "这一步需要你点个头，我再继续。";
+  const summary = document.createElement("strong");
+  summary.className = "permission-summary";
+  summary.textContent = permission.summary || "需要你确认这一步";
+  card.append(narration, summary);
+
+  if (part.state !== "awaiting") {
+    const result = document.createElement("small");
+    result.className = "permission-result";
+    result.textContent =
+      part.state === "denied" ? "这一步没有执行" : "已经确认，可以继续";
+    card.append(result);
+    node.replaceChildren(card);
+    return;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "permission-actions";
+  for (const choice of ["once", "deny"].filter((item) =>
+    (permission.choices || []).includes(item),
+  )) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      "permission-button " + (choice === "once" ? "primary" : "quiet");
+    button.textContent = permissionChoiceLabel(choice);
+    button.addEventListener("click", () => void answerPermission(choice));
+    actions.append(button);
+  }
+
+  const details = document.createElement("details");
+  details.className = "permission-details";
+  const detailsTitle = document.createElement("summary");
+  detailsTitle.textContent = "看看具体会做什么";
+  const list = document.createElement("ul");
+  for (const line of permission.boundaries || []) {
+    const item = document.createElement("li");
+    item.textContent = line;
+    list.append(item);
+  }
+  details.append(detailsTitle, list);
+  if (permission.technical_detail) {
+    const technical = document.createElement("pre");
+    technical.textContent = permission.technical_detail;
+    details.append(technical);
+  }
+  const scoped = document.createElement("div");
+  scoped.className = "permission-scoped-actions";
+  for (const choice of ["session", "always"].filter((item) =>
+    (permission.choices || []).includes(item),
+  )) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = permissionChoiceLabel(choice);
+    button.addEventListener("click", () => void answerPermission(choice));
+    scoped.append(button);
+  }
+  details.append(scoped);
+  card.append(actions, details);
+  node.replaceChildren(card);
+}
+
+function renderOrderedTurn(state) {
+  if (!activeAssistantBubble) {
+    activeAssistantBubble = createMessage("assistant");
+    activeAssistantBubble.classList.add("turn-parts");
+  }
+  const parts = state.parts || [];
+  const seen = new Set();
+  for (const part of parts) {
+    seen.add(part.id);
+    let node = activeTurnPartNodes.get(part.id);
+    if (!node) {
+      node = document.createElement(part.type === "tool" ? "details" : "div");
+      node.dataset.partId = part.id;
+      activeTurnPartNodes.set(part.id, node);
+      const actions =
+        activeAssistantBubble.querySelector(":scope > .message-actions");
+      activeAssistantBubble.insertBefore(node, actions || null);
+    }
+    if (node.dataset.updatedAt === String(part.updatedAt)) continue;
+    if (part.type === "text") {
+      node.className = "turn-part turn-text";
+      renderMessage(node, "assistant", part.content || "");
+    } else if (part.type === "tool") {
+      renderOrderedToolPart(node, part);
+    } else if (part.type === "permission") {
+      renderOrderedPermissionPart(node, part);
+    }
+    node.dataset.updatedAt = String(part.updatedAt);
+  }
+  for (const [id, node] of activeTurnPartNodes) {
+    if (seen.has(id)) continue;
+    node.remove();
+    activeTurnPartNodes.delete(id);
+  }
+  if (
+    state.phase === "completed" &&
+    state.content &&
+    !activeTurnActionsAdded
+  ) {
+    appendMessageActions(activeAssistantBubble, "assistant", state.content);
+    activeTurnActionsAdded = true;
+  }
+  hideTurnStatus();
+}
+
 function addMessage(role, content, options = {}) {
   if (!content) return null;
   const forceScroll = Boolean(options.forceScroll);
@@ -939,10 +1310,12 @@ function hideTurnStatus() {
 }
 
 function showTurnStatus() {
-  const shouldMoveToLatest =
-    elements.turnStatus.hidden ||
-    elements.turnStatus.parentElement !== elements.messages;
-  if (shouldMoveToLatest) elements.messages.append(elements.turnStatus);
+  const assistantRow = activeAssistantBubble?.closest(".message-row");
+  if (assistantRow && assistantRow.parentElement === elements.messages) {
+    elements.messages.insertBefore(elements.turnStatus, assistantRow);
+  } else if (elements.turnStatus.parentElement !== elements.messages) {
+    elements.messages.append(elements.turnStatus);
+  }
   elements.turnStatus.hidden = false;
 }
 
@@ -968,7 +1341,9 @@ function permissionChoiceLabel(choice) {
 async function answerPermission(choice) {
   const permission = turnState.permission;
   if (!permission) return;
-  const buttons = elements.permissionCard.querySelectorAll("button");
+  const buttons = elements.messages.querySelectorAll(
+    "[data-turn-permission] button, #permission-card button",
+  );
   buttons.forEach((button) => { button.disabled = true; });
   try {
     const response = await fetch(
@@ -1064,6 +1439,72 @@ function activityStatusLabel(activity) {
   return "进行中";
 }
 
+function activityToolLabel(activity) {
+  if (activity.tool_label) return activity.tool_label;
+  return {
+    checking: "联网查询",
+    reading: "读取内容",
+    making: "创建内容",
+    remembering: "保存信息",
+    handling: "系统工具",
+  }[activity.kind] || "系统工具";
+}
+
+function groupActivities(activities) {
+  const groups = [];
+  const positions = new Map();
+  for (const activity of activities) {
+    const label = activityToolLabel(activity);
+    const key = [label, activity.state, activity.title].join("\n");
+    const position = positions.get(key);
+    if (position !== undefined) {
+      groups[position].count += 1;
+      continue;
+    }
+    positions.set(key, groups.length);
+    groups.push({ ...activity, tool_label: label, count: 1 });
+  }
+  return groups;
+}
+
+function activityHeadline(state, summary) {
+  const activities = state.activities || [];
+  const current =
+    [...activities].reverse().find((activity) => activity.state === "active") ||
+    activities[activities.length - 1];
+  if (summary.state === "failed") return "有一步没有成功，我正在换个办法";
+  if (state.phase === "responding") return "资料已经找好了，我在整理成回答";
+  if (summary.state === "completed") {
+    if (activities.length && activities.every((activity) => activity.kind === "checking")) {
+      return "已经替你把相关信息查清楚了";
+    }
+    return "刚刚替你处理好了";
+  }
+  if (!current) return summary.title;
+  return {
+    "联网搜索": "正在帮你从网上找相关信息",
+    "读取网页": "正在打开网页仔细核对",
+    "提取网页内容": "正在整理网页里的重点",
+    "浏览器搜索": "正在通过浏览器查找相关信息",
+    "读取文件": "正在认真看你提到的文件",
+    "批量读取文件": "正在逐个查看相关文件",
+    "识别图片": "正在看清图片里的内容",
+    "写入文件": "正在把内容写进文件",
+    "修改文件": "正在把需要调整的地方改好",
+    "生成图片": "正在为你生成图片",
+    "运行代码": "正在运行代码确认结果",
+    "终端": "正在执行必要的本地操作",
+    "电脑操作": "正在电脑上替你继续处理",
+  }[activityToolLabel(current)] || current.title || "正在替你处理";
+}
+
+function activityMeta(state, summary, current) {
+  if (summary.state === "failed") return "展开查看没有成功的工具步骤";
+  if (state.phase === "responding") return "工具步骤已完成，正在组织回复";
+  if (summary.state === "completed") return "展开查看本次使用的工具";
+  return "正在使用" + activityToolLabel(current) + "，展开查看详情";
+}
+
 function renderActionTrail(state) {
   const activities = state.activities || [];
   if (!activities.length) {
@@ -1080,28 +1521,27 @@ function renderActionTrail(state) {
   const summaryButton = document.createElement("summary");
   summaryButton.className = "activity-summary";
 
-  const mark = document.createElement("span");
-  mark.className = "activity-mark";
-  mark.setAttribute("aria-hidden", "true");
-
   const copy = document.createElement("div");
   copy.className = "activity-copy";
   const title = document.createElement("p");
-  title.textContent = summary.title;
-  copy.append(title);
+  title.textContent = activityHeadline(state, summary);
 
   const meta = document.createElement("span");
   meta.className = "activity-meta";
-  meta.textContent = summary.meta;
+  const current =
+    [...activities].reverse().find((activity) => activity.state === "active") ||
+    activities[activities.length - 1];
+  meta.textContent = activityMeta(state, summary, current);
+  copy.append(title, meta);
 
   const toggleMark = document.createElement("span");
   toggleMark.className = "activity-toggle";
   toggleMark.setAttribute("aria-hidden", "true");
   toggleMark.append(createIcon("chevron-down"));
 
-  const details = document.createElement("ol");
+  const details = document.createElement("ul");
   details.className = "activity-steps";
-  for (const activity of activities) {
+  for (const activity of groupActivities(activities)) {
     const item = document.createElement("li");
     item.className = "activity-step";
     item.dataset.state = activity.state || "active";
@@ -1113,13 +1553,12 @@ function renderActionTrail(state) {
     const stepCopy = document.createElement("div");
     stepCopy.className = "activity-step-copy";
     const stepTitle = document.createElement("p");
-    stepTitle.textContent = activity.title || "正在替你处理";
+    stepTitle.textContent =
+      activity.tool_label + (activity.count > 1 ? "（" + activity.count + " 次）" : "");
     stepCopy.append(stepTitle);
-    if (activity.detail) {
-      const stepDetail = document.createElement("span");
-      stepDetail.textContent = activity.detail;
-      stepCopy.append(stepDetail);
-    }
+    const stepDetail = document.createElement("span");
+    stepDetail.textContent = activity.title || activity.detail || "正在替你处理";
+    stepCopy.append(stepDetail);
 
     const stepState = document.createElement("span");
     stepState.className = "activity-step-state";
@@ -1133,7 +1572,7 @@ function renderActionTrail(state) {
     if (wrapper.open) scrollToLatest();
   });
 
-  summaryButton.append(mark, copy, meta, toggleMark);
+  summaryButton.append(copy, toggleMark);
   wrapper.append(summaryButton, details);
   elements.actionTrail.replaceChildren(wrapper);
   showTurnStatus();
@@ -1142,6 +1581,11 @@ function renderActionTrail(state) {
 }
 
 function renderTurnState(state) {
+  if ((state.parts || []).length) {
+    renderOrderedTurn(state);
+    scrollToLatest();
+    return;
+  }
   if (state.phase === "awaiting_permission" && state.permission) renderPermission(state);
   else if (state.activities.length) renderActionTrail(state);
   else if (state.phase === "present" || state.phase === "acting") renderPresence(state);
@@ -1225,16 +1669,6 @@ function handleStreamEvent(name, payload) {
     Date.now(),
   );
 
-  if (name === "assistant.delta" && payload.delta) {
-    if (!activeAssistantBubble) activeAssistantBubble = createMessage("assistant");
-    renderMessage(activeAssistantBubble, "assistant", turnState.content);
-  }
-
-  if (name === "assistant.completed" && payload.content) {
-    if (!activeAssistantBubble) activeAssistantBubble = createMessage("assistant");
-    renderMessage(activeAssistantBubble, "assistant", turnState.content);
-  }
-
   if (name === "error") showError(payload.message);
   renderTurnState(turnState);
 }
@@ -1269,8 +1703,31 @@ async function consumeSse(response) {
   }
 }
 
+let localSessionRefresh = null;
+
+async function refreshLocalSession() {
+  if (localSessionRefresh === null) {
+    localSessionRefresh = fetch("/", {
+      credentials: "same-origin",
+      cache: "no-store",
+    }).finally(() => {
+      localSessionRefresh = null;
+    });
+  }
+  const response = await localSessionRefresh;
+  return response.ok;
+}
+
+async function fetchWithLocalSessionRecovery(url, options = {}) {
+  let response = await fetch(url, options);
+  if (response.status !== 401) return response;
+  if (!(await refreshLocalSession())) return response;
+  response = await fetch(url, options);
+  return response;
+}
+
 async function bootstrap() {
-  const response = await fetch("/api/companion/bootstrap", {
+  const response = await fetchWithLocalSessionRecovery("/api/companion/bootstrap", {
     credentials: "same-origin",
   });
   if (!response.ok) throw new Error("bootstrap_unavailable");
@@ -1279,7 +1736,11 @@ async function bootstrap() {
   sessionKey = data.session_key;
   elements.name.textContent = data.profile.name;
   elements.status.textContent = data.profile.status;
+  if (elements.presenceStageName) elements.presenceStageName.textContent = data.profile.name;
+  if (elements.presenceStageStatus) elements.presenceStageStatus.textContent = data.profile.status || "正在陪你";
   setAvatarLabel(data.profile.name || "Honey");
+  applyAvatarImages();
+  setupAvatarPickers();
   hydrateCompanionPages(data);
   for (const message of data.messages || []) {
     addMessage(message.role, message.content);
@@ -1293,6 +1754,8 @@ async function sendMessage(text, options = {}) {
   sending = true;
   setSendState(true);
   activeAssistantBubble = null;
+  activeTurnPartNodes = new Map();
+  activeTurnActionsAdded = false;
   turnState = HoneyOSRunState.create(Date.now());
   actionTrailExpanded = false;
   hideTurnStatus();
@@ -1310,7 +1773,7 @@ async function sendMessage(text, options = {}) {
     if (options.proactiveDeliveryId) {
       headers["X-HoneyOS-Internal-Turn"] = "proactive-topic";
     }
-    const response = await fetch(
+    const response = await fetchWithLocalSessionRecovery(
       "/api/sessions/" + encodeURIComponent(sessionId) + "/chat/stream",
       {
         method: "POST",
@@ -1336,6 +1799,7 @@ async function sendMessage(text, options = {}) {
     activeAssistantBubble = null;
     elements.input.focus();
   }
+  if (completed) refreshMemories({ follow: true });
   return completed;
 }
 

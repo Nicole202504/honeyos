@@ -202,7 +202,7 @@ This directory name means “Recovered from an older version.” Recovery never 
 
 HoneyOS includes the `honeyos-builder` Skill. It activates only when you explicitly ask to change HoneyOS itself: its pages, companion activity copy, regular built-in companion Skills, or stable extension points. Regular Skill installation, user-project coding, persona and memory changes, and model or voice settings do not use this release flow.
 
-Builder copies only explicitly allowed product files into a candidate workspace. After you confirm, HoneyOS preserves the previous version, switches to the candidate, and restarts automatically. If the new version fails its health check, HoneyOS restores the previous version. Model configuration, IM credentials, relationship memory, and chat history always remain in the original `~/.honeyos` directory and are never copied into candidate source directories.
+Browser-only HTML, CSS, and JavaScript changes use a live override under `~/HoneyOS Projects/HoneyOS UI/`: refresh the page to see them, without restarting chat. Other product-code changes still use Builder's checked candidate flow. Builder preserves the previous version, switches only after checks pass, and restores the previous version if the new one cannot start. Model configuration, IM credentials, relationship memory, and chat history always remain in the original `~/.honeyos` directory and are never copied into candidate source directories.
 
 See the [HoneyOS Builder developer guide](docs/HONEYOS_BUILDER.md) for directory boundaries, the state machine, CLI commands, and test entry points.
 
@@ -216,6 +216,29 @@ See the [HoneyOS Builder developer guide](docs/HONEYOS_BUILDER.md) for directory
 ~/.local/bin/honeyos stop
 ~/.local/bin/honeyos start
 ```
+
+### Recover when the browser says it is disconnected
+
+HoneyOS normally runs as a background service and macOS or Linux starts it again after an unexpected exit. If the browser still cannot connect after a few seconds, open Terminal and run:
+
+```bash
+~/.local/bin/honeyos restart
+```
+
+This restarts only the HoneyOS service. It does not delete the companion persona, relationship memory, conversations, API keys, or IM connections. Wait a few seconds, then reopen the local chat page:
+
+```bash
+~/.local/bin/honeyos web
+```
+
+If it still does not open, collect a local diagnosis with:
+
+```bash
+~/.local/bin/honeyos doctor
+~/.local/bin/honeyos logs
+```
+
+When asking for help, share only the relevant error lines. Do not paste API keys, WeChat tokens, Feishu secrets, or the complete `~/.honeyos` directory.
 
 To enter model settings again or reconnect IM:
 

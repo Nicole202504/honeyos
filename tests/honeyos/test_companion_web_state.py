@@ -198,3 +198,46 @@ process.stdout.write(JSON.stringify(state));
 
     assert state["phase"] == "acting"
     assert state["permission"] is None
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
+def test_turn_state_preserves_text_tool_text_tool_order():
+    state = _run_state_script(
+        """
+let state = HoneyOSRunState.create(1000);
+state = HoneyOSRunState.reduce(state, {name:'assistant.delta', payload:{delta:'我先看一下。'}}, 1100);
+state = HoneyOSRunState.reduce(state, {name:'tool.started', payload:{activity:{activity_id:'a1',kind:'checking',state:'active',title:'正在检查',detail:'',tool_label:'读取文件'}}}, 1200);
+state = HoneyOSRunState.reduce(state, {name:'tool.completed', payload:{activity:{activity_id:'a1',kind:'checking',state:'completed',title:'检查好了',detail:'',tool_label:'读取文件'}}}, 1300);
+state = HoneyOSRunState.reduce(state, {name:'assistant.delta', payload:{delta:'发现一个问题。'}}, 1400);
+state = HoneyOSRunState.reduce(state, {name:'tool.started', payload:{activity:{activity_id:'a2',kind:'making',state:'active',title:'正在修改',detail:'',tool_label:'修改文件'}}}, 1500);
+process.stdout.write(JSON.stringify(state));
+"""
+    )
+
+    assert [part["type"] for part in state["parts"]] == [
+        "text",
+        "tool",
+        "text",
+        "tool",
+    ]
+    assert state["parts"][0]["content"] == "我先看一下。"
+    assert state["parts"][1]["activity"]["state"] == "completed"
+    assert state["parts"][1]["activity"]["tool_label"] == "读取文件"
+    assert state["parts"][2]["content"] == "发现一个问题。"
+    assert state["parts"][3]["activity"]["tool_label"] == "修改文件"
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
+def test_tool_updates_keep_the_same_part_identity_and_position():
+    state = _run_state_script(
+        """
+let state = HoneyOSRunState.create(1000);
+state = HoneyOSRunState.reduce(state, {name:'tool.started', payload:{activity:{activity_id:'a1',kind:'checking',state:'active',title:'正在检查',detail:''}}}, 1100);
+state = HoneyOSRunState.reduce(state, {name:'tool.completed', payload:{activity:{activity_id:'a1',kind:'checking',state:'completed',title:'检查好了',detail:''}}}, 1200);
+process.stdout.write(JSON.stringify(state));
+"""
+    )
+
+    assert len(state["parts"]) == 1
+    assert state["parts"][0]["id"] == "tool-a1"
+    assert state["parts"][0]["state"] == "completed"

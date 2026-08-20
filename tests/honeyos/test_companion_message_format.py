@@ -33,6 +33,21 @@ process.stdout.write(JSON.stringify(HoneyOSMessageFormat.parse({json.dumps(messa
     return json.loads(result.stdout)
 
 
+def _display_message(message: str) -> str:
+    script = f"""
+global.window = global;
+require({json.dumps(str(ASSET))});
+process.stdout.write(HoneyOSMessageFormat.displayText({json.dumps(message)}));
+"""
+    result = subprocess.run(
+        [NODE, "-e", script],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout
+
+
 @pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
 def test_companion_message_format_parses_markdown_without_raw_markers():
     blocks = _parse_message(
@@ -59,3 +74,24 @@ def test_companion_message_format_treats_html_as_text():
             ],
         }
     ]
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
+def test_companion_message_format_hides_image_data_urls():
+    source = "图片：data:image/png;base64," + ("Ab12+/" * 120)
+
+    assert _display_message(source) == "图片：[图片数据已隐藏]"
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
+def test_companion_message_format_hides_raw_long_base64():
+    source = "结果：" + ("Ab12+/" * 120)
+
+    assert _display_message(source) == "结果：[过长的数据已隐藏]"
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
+def test_companion_message_format_hides_extreme_links():
+    source = "链接：https://example.com/?payload=" + ("x" * 600)
+
+    assert _display_message(source) == "链接：[过长的链接已隐藏]"
