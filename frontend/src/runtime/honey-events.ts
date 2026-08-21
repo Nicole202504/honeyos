@@ -1,18 +1,38 @@
-export type HoneyEvent =
-  | { type: "run.started"; runId: string }
-  | { type: "presence.updated"; message: string }
-  | { type: "assistant.delta"; partId: string; delta: string }
-  | { type: "tool.started"; partId: string; name: string; summary: string }
-  | { type: "tool.completed"; partId: string; summary: string }
-  | { type: "approval.request"; partId: string; summary: string }
-  | { type: "approval.responded"; partId: string }
-  | { type: "run.completed" }
-  | { type: "error"; message: string };
+export type HoneyActivity = {
+  activity_id: string;
+  kind: string;
+  state: string;
+  title: string;
+  detail: string;
+  tool_label?: string;
+};
+
+export type PermissionChoice = "once" | "session" | "always" | "deny";
+
+export type HoneyPermission = {
+  approval_id: string;
+  narration: string;
+  summary: string;
+  boundaries: string[];
+  technical_detail: string;
+  choices: PermissionChoice[];
+};
+
+export type HoneyEvent = {
+  name: string;
+  payload: Record<string, unknown>;
+};
 
 export type RunPart =
-  | { id: string; kind: "text"; content: string }
-  | { id: string; kind: "tool"; name: string; summary: string; status: "running" | "completed" }
-  | { id: string; kind: "approval"; summary: string; status: "waiting" | "completed" };
+  | { id: string; kind: "text"; content: string; status: "streaming" | "completed" }
+  | { id: string; kind: "tool"; activity: HoneyActivity }
+  | {
+      id: string;
+      kind: "approval";
+      permission: HoneyPermission;
+      status: "waiting" | "completed" | "denied";
+      choice?: PermissionChoice;
+    };
 
 export type RunPhase =
   | "idle"
@@ -26,7 +46,8 @@ export type RunPhase =
 export type HoneyRunState = {
   runId: string | null;
   phase: RunPhase;
-  presence: string;
+  content: string;
+  presence: HoneyActivity | null;
   parts: RunPart[];
   error: string | null;
 };
@@ -34,7 +55,8 @@ export type HoneyRunState = {
 export const initialRunState: HoneyRunState = {
   runId: null,
   phase: "idle",
-  presence: "",
+  content: "",
+  presence: null,
   parts: [],
   error: null,
 };

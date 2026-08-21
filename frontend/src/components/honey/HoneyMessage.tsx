@@ -1,0 +1,90 @@
+import type { ReactNode } from "react";
+
+const hiddenImage = "[图片数据已隐藏]";
+const hiddenLongData = "[过长的数据已隐藏]";
+const hiddenLongLink = "[过长的链接已隐藏]";
+
+export function safeDisplayText(source: string): string {
+  return String(source || "")
+    .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]{256,}/gi, hiddenImage)
+    .replace(/https?:\/\/[^\s]{500,}/gi, hiddenLongLink)
+    .replace(/[a-z0-9+/]{512,}={0,2}/gi, hiddenLongData);
+}
+
+function InlineText({ children }: { children: string }) {
+  const nodes: ReactNode[] = [];
+  const pattern = /(\*\*([^*\n]+)\*\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(children))) {
+    if (match.index > cursor) nodes.push(children.slice(cursor, match.index));
+    if (match[2] !== undefined) nodes.push(<strong key={match.index}>{match[2]}</strong>);
+    else if (match[3] !== undefined) nodes.push(<code key={match.index}>{match[3]}</code>);
+    else nodes.push(<a key={match.index} href={match[5]} target="_blank" rel="noreferrer">{match[4]}</a>);
+    cursor = pattern.lastIndex;
+  }
+  if (cursor < children.length) nodes.push(children.slice(cursor));
+  return nodes.length ? nodes : children;
+}
+
+export function HoneyMessage({ content, plain = false }: { content: string; plain?: boolean }) {
+  const safe = safeDisplayText(content).replaceAll("\r\n", "\n");
+  if (plain) return <p className="whitespace-pre-wrap break-words">{safe}</p>;
+
+  const lines = safe.split("\n");
+  const blocks: ReactNode[] = [];
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    if (!line.trim()) { index += 1; continue; }
+    const codeStart = line.match(/^\s*```/);
+    if (codeStart) {
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^\s*```/.test(lines[index])) code.push(lines[index++]);
+      if (index < lines.length) index += 1;
+      blocks.push(<pre key={`code-${index}`}><code>{code.join("\n")}</code></pre>);
+      continue;
+    }
+    const heading = line.match(/^\s*(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      const copy = <InlineText>{heading[2]}</InlineText>;
+      blocks.push(level === 1 ? <h2 key={index}>{copy}</h2> : level === 2 ? <h3 key={index}>{copy}</h3> : <h4 key={index}>{copy}</h4>);
+      index += 1;
+      continue;
+    }
+    const list = line.match(/^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/);
+    if (list) {
+      const ordered = Boolean(list[2]);
+      const items: ReactNode[] = [];
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*(?:([-+*])|(\d+)\.)\s+(.+)$/);
+        if (!item || Boolean(item[2]) !== ordered) break;
+        items.push(<li key={index}><InlineText>{item[3]}</InlineText></li>);
+        index += 1;
+        while (index < lines.length && !lines[index].trim()) index += 1;
+      }
+      blocks.push(ordered ? <ol key={`list-${index}`}>{items}</ol> : <ul key={`list-${index}`}>{items}</ul>);
+      continue;
+    }
+    const quote = line.match(/^\s*>\s?(.*)$/);
+    if (quote) {
+      const copy: string[] = [];
+      while (index < lines.length) {
+        const part = lines[index].match(/^\s*>\s?(.*)$/);
+        if (!part) break;
+        copy.push(part[1]);
+        index += 1;
+      }
+      blocks.push(<blockquote key={`quote-${index}`}><InlineText>{copy.join(" ")}</InlineText></blockquote>);
+      continue;
+    }
+    const paragraph = [line];
+    index += 1;
+    while (index < lines.length && lines[index].trim() && !/^\s*(?:#{1,3}\s+|```|>|[-+*]\s+|\d+\.\s+)/.test(lines[index])) {
+      paragraph.push(lines[index++]);
+    }
+    blocks.push(<p key={`p-${index}`}><InlineText>{paragraph.join(" ")}</InlineText></p>);
+  }
+  return <div className="honey-rich-text">{blocks}</div>;
+}

@@ -8,8 +8,29 @@ export function apiPath(path: string): string {
   return `${profilePrefix()}${normalized}`;
 }
 
+let localSessionRefresh: Promise<Response> | null = null;
+
+async function refreshLocalSession(): Promise<boolean> {
+  if (!localSessionRefresh) {
+    localSessionRefresh = fetch(`${profilePrefix()}/new-ui/`, {
+      credentials: "same-origin",
+      cache: "no-store",
+    }).finally(() => {
+      localSessionRefresh = null;
+    });
+  }
+  return (await localSessionRefresh).ok;
+}
+
+export async function fetchWithLocalSessionRecovery(url: string, init?: RequestInit): Promise<Response> {
+  let response = await fetch(url, init);
+  if (response.status !== 401 || !(await refreshLocalSession())) return response;
+  response = await fetch(url, init);
+  return response;
+}
+
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiPath(path), {
+  const response = await fetchWithLocalSessionRecovery(apiPath(path), {
     credentials: "same-origin",
     ...init,
     headers: {

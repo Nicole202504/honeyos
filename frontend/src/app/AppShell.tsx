@@ -63,11 +63,11 @@ export function AppShell() {
           <NavigationItems />
         </nav>
         <a className="mt-auto rounded-xl px-3 py-3 text-xs leading-5 text-[var(--foreground-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]" href={legacyUrl}>
-          返回当前界面
+          切回旧界面（恢复用）
         </a>
       </aside>
 
-      <main className="min-h-[100dvh] min-w-0 overflow-y-auto pb-[calc(84px+env(safe-area-inset-bottom))] md:h-[100dvh] md:pb-0">
+      <main className="h-[100dvh] min-w-0 overflow-y-auto pb-[calc(84px+env(safe-area-inset-bottom))] md:pb-0">
         <Outlet />
       </main>
 

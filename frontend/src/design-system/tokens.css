@@ -51,6 +51,70 @@ body {
     var(--background);
 }
 
+.honey-rich-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.honey-rich-text > * + * {
+  margin-top: 0.85rem;
+}
+
+.honey-rich-text h2,
+.honey-rich-text h3,
+.honey-rich-text h4 {
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+}
+
+.honey-rich-text h2 { font-size: 1.2rem; }
+.honey-rich-text h3 { font-size: 1.08rem; }
+.honey-rich-text h4 { font-size: 1rem; }
+
+.honey-rich-text ul,
+.honey-rich-text ol {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1.35rem;
+}
+
+.honey-rich-text ul { list-style: disc; }
+.honey-rich-text ol { list-style: decimal; }
+
+.honey-rich-text blockquote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 1rem;
+  color: var(--foreground-muted);
+}
+
+.honey-rich-text code {
+  border-radius: 0.35rem;
+  background: var(--surface-subtle);
+  padding: 0.15em 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.honey-rich-text pre {
+  max-width: 100%;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  padding: 0.9rem 1rem;
+}
+
+.honey-rich-text pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.honey-rich-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 button,
 input,
 textarea,

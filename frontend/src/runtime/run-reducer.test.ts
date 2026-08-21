@@ -5,21 +5,32 @@ import { reduceHoneyRun } from "./run-reducer";
 
 describe("reduceHoneyRun", () => {
   it("keeps text and tools in event order", () => {
-    let state = reduceHoneyRun(initialRunState, { type: "run.started", runId: "run-1" });
-    state = reduceHoneyRun(state, { type: "assistant.delta", partId: "text-1", delta: "我先看看。" });
-    state = reduceHoneyRun(state, { type: "tool.started", partId: "tool-1", name: "web.search", summary: "正在找相关内容" });
-    state = reduceHoneyRun(state, { type: "tool.completed", partId: "tool-1", summary: "找到了相关内容" });
-    state = reduceHoneyRun(state, { type: "assistant.delta", partId: "text-2", delta: "找到了。" });
+    let state = reduceHoneyRun(initialRunState, { name: "run.started", payload: { run_id: "run-1" } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "我先看看。" } });
+    state = reduceHoneyRun(state, { name: "tool.started", payload: { activity: { activity_id: "1", kind: "checking", state: "active", title: "正在找相关内容", detail: "" } } });
+    state = reduceHoneyRun(state, { name: "tool.completed", payload: { activity: { activity_id: "1", kind: "checking", state: "completed", title: "找到了相关内容", detail: "" } } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "找到了。" } });
 
     expect(state.parts.map((part) => part.kind)).toEqual(["text", "tool", "text"]);
-    expect(state.parts[1]).toMatchObject({ status: "completed", summary: "找到了相关内容" });
+    expect(state.parts[1]).toMatchObject({ activity: { state: "completed", title: "找到了相关内容" } });
   });
 
   it("does not create a second text part for a streaming delta", () => {
-    let state = reduceHoneyRun(initialRunState, { type: "run.started", runId: "run-1" });
-    state = reduceHoneyRun(state, { type: "assistant.delta", partId: "text-1", delta: "你" });
-    state = reduceHoneyRun(state, { type: "assistant.delta", partId: "text-1", delta: "好" });
+    let state = reduceHoneyRun(initialRunState, { name: "run.started", payload: { run_id: "run-1" } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "你" } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "好" } });
 
-    expect(state.parts).toEqual([{ id: "text-1", kind: "text", content: "你好" }]);
+    expect(state.parts).toEqual([{ id: "text-1", kind: "text", content: "你好", status: "streaming" }]);
+  });
+
+  it("keeps approval at its exact point in the turn", () => {
+    let state = reduceHoneyRun(initialRunState, { name: "run.started", payload: { run_id: "run-2" } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "我准备改一下。" } });
+    state = reduceHoneyRun(state, { name: "approval.request", payload: { approval_id: "ask-1", summary: "允许修改这个文件吗", choices: ["once", "deny"] } });
+    state = reduceHoneyRun(state, { name: "approval.responded", payload: { choice: "once" } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "已经改好了。" } });
+
+    expect(state.parts.map((part) => part.kind)).toEqual(["text", "approval", "text"]);
+    expect(state.parts[1]).toMatchObject({ status: "completed", choice: "once" });
   });
 });

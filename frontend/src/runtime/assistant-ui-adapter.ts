@@ -20,15 +20,15 @@ export function toAssistantParts(parts: RunPart[]): HoneyAssistantPart[] {
     if (part.kind === "tool") {
       return {
         type: "tool-call",
-        toolName: part.name,
-        summary: part.summary,
-        status: part.status === "completed" ? "complete" : "running",
+        toolName: part.activity.tool_label || part.activity.kind,
+        summary: part.activity.title,
+        status: part.activity.state === "completed" ? "complete" : "running",
       };
     }
     return {
       type: "approval",
-      summary: part.summary,
-      status: part.status === "completed" ? "complete" : "waiting",
+      summary: part.permission.summary,
+      status: part.status === "waiting" ? "waiting" : "complete",
     };
   });
 }
