@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #eef0f4;
+  --surface: #f8f9fb;
+  --surface-raised: #ffffff;
+  --surface-subtle: #e6e8ee;
+  --foreground: #202128;
+  --foreground-muted: #6d707c;
+  --foreground-faint: #979aa5;
+  --border: rgba(32, 33, 40, 0.12);
+  --border-strong: rgba(32, 33, 40, 0.2);
+  --accent: #3158d8;
+  --accent-strong: #2647b6;
+  --accent-foreground: #ffffff;
+  --focus: #3158d8;
+  --success: #40785b;
+  --warning: #8a642d;
+  --danger: #a24850;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --font-body: "SF Pro Text", "SF Pro Display", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-body);
+  color: var(--foreground);
+  background: var(--background);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 82% 8%, rgba(49, 88, 216, 0.08), transparent 30rem),
+    var(--background);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  color: var(--accent-foreground);
+  background: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #14151a;
+    --surface: #1c1d23;
+    --surface-raised: #24262d;
+    --surface-subtle: #2c2e36;
+    --foreground: #f3f4f7;
+    --foreground-muted: #adb0bb;
+    --foreground-faint: #7d808b;
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --accent: #6f8fff;
+    --accent-strong: #86a0ff;
+    --accent-foreground: #111933;
+    --focus: #86a0ff;
+    --success: #73ad8a;
+    --warning: #d2a45d;
+    --danger: #dc7a82;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 82% 8%, rgba(111, 143, 255, 0.1), transparent 30rem),
+      var(--background);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

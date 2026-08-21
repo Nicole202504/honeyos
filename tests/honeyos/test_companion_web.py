@@ -545,6 +545,9 @@ def test_api_server_registers_companion_web_routes():
     routes = {(method, path) for method, path, _handler in adapter._http_route_table()}
 
     assert ("GET", "/") in routes
+    assert ("GET", "/new-ui") in routes
+    assert ("GET", "/new-ui/") in routes
+    assert ("GET", "/new-ui/{asset_path:.*}") in routes
     assert ("GET", "/file-open.js") in routes
     assert ("GET", "/message-format.js") in routes
     assert ("GET", "/run-state.js") in routes
@@ -826,11 +829,13 @@ def test_same_origin_loopback_browser_request_is_allowed():
 
 def test_companion_page_csp_allows_only_its_own_assets_and_stream():
     page_policy = _security_headers_for_path("/")["Content-Security-Policy"]
+    react_policy = _security_headers_for_path("/new-ui/assets/app.js")["Content-Security-Policy"]
     api_policy = _security_headers_for_path("/v1/models")["Content-Security-Policy"]
 
     assert "default-src 'self'" in page_policy
     assert "connect-src 'self'" in page_policy
     assert "script-src 'self'" in page_policy
+    assert "script-src 'self'" in react_policy
     assert api_policy == "default-src 'none'; frame-ancestors 'none'"
 
 
@@ -846,6 +851,29 @@ async def test_companion_index_establishes_an_http_only_local_session():
     cookie = response.cookies["honeyos_local"]
     assert cookie["httponly"] is True
     assert cookie["samesite"] == "Strict"
+
+
+@pytest.mark.asyncio
+async def test_companion_react_index_establishes_session_and_supports_spa_routes():
+    adapter = _api_adapter()
+    request = SimpleNamespace(remote="127.0.0.1", match_info={"asset_path": "memories"})
+
+    response = await adapter._handle_companion_react(request)
+
+    assert response.status == 200
+    assert b'<div id="root"></div>' in response.body
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.cookies["honeyos_local"]["httponly"] is True
+
+
+@pytest.mark.asyncio
+async def test_companion_react_rejects_path_traversal():
+    adapter = _api_adapter()
+    request = SimpleNamespace(remote="127.0.0.1", match_info={"asset_path": "../secret.txt"})
+
+    response = await adapter._handle_companion_react(request)
+
+    assert response.status == 404
 
 
 @pytest.mark.asyncio

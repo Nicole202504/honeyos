@@ -50,6 +50,7 @@ from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from functools import wraps
 import logging
+import mimetypes
 import os
 import re
 import secrets
@@ -1313,7 +1314,9 @@ def _security_headers_for_path(path: str) -> Dict[str, str]:
         "/app.js",
         "/styles.css",
         "/icons.svg",
-    } or path.startswith("/honeyos/"):
+    } or path.startswith("/honeyos/") or path.startswith("/new-ui") or bool(
+        re.match(r"^/p/[^/]+/new-ui(?:/|$)", path)
+    ):
         headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self'; style-src 'self'; connect-src 'self'; "
@@ -2157,6 +2160,9 @@ class APIServerAdapter(BasePlatformAdapter):
         """
         routes: List[tuple] = [
             ("GET", "/", self._handle_companion_index),
+            ("GET", "/new-ui", self._handle_companion_react_redirect),
+            ("GET", "/new-ui/", self._handle_companion_react),
+            ("GET", "/new-ui/{asset_path:.*}", self._handle_companion_react),
             ("GET", "/file-open.js", self._handle_companion_file_guard),
             ("GET", "/message-format.js", self._handle_companion_message_format),
             ("GET", "/run-state.js", self._handle_companion_run_state),
@@ -2302,6 +2308,17 @@ class APIServerAdapter(BasePlatformAdapter):
         return resolve_companion_web_asset(bundled_root, filename)
 
     @staticmethod
+    def _companion_react_asset_path(asset_path: str) -> Path:
+        from honeyos.companion.web_customization import resolve_companion_react_asset
+
+        bundled_root = (
+            Path(__file__).resolve().parents[2]
+            / "companion"
+            / "react_dist"
+        )
+        return resolve_companion_react_asset(bundled_root, asset_path)
+
+    @staticmethod
     def _request_is_loopback(request: "web.Request") -> bool:
         remote = str(getattr(request, "remote", "") or "").split("%", 1)[0]
         try:
@@ -2346,6 +2363,45 @@ class APIServerAdapter(BasePlatformAdapter):
             "text/html",
             establish_session=True,
         )
+
+    async def _handle_companion_react_redirect(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        if not self._request_is_loopback(request):
+            return web.Response(status=404)
+        return web.HTTPFound(location=f"{request.path}/")
+
+    async def _handle_companion_react(self, request: "web.Request") -> "web.Response":
+        """Serve the opt-in React UI and fall back to its index for routes."""
+
+        if not self._request_is_loopback(request):
+            return web.Response(status=404)
+        requested = str(request.match_info.get("asset_path") or "").strip("/")
+        relative = requested or "index.html"
+        path = self._companion_react_asset_path(relative)
+        if not path.is_file() and not Path(relative).suffix:
+            relative = "index.html"
+            path = self._companion_react_asset_path(relative)
+        try:
+            body = await asyncio.to_thread(path.read_bytes)
+        except OSError:
+            return web.Response(status=404)
+        content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
+        response = web.Response(body=body, content_type=content_type)
+        if relative == "index.html":
+            response.headers["Cache-Control"] = "no-store"
+            response.set_cookie(
+                "honeyos_local",
+                self._local_web_token,
+                httponly=True,
+                samesite="Strict",
+                path="/",
+            )
+        elif relative.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     async def _handle_companion_script(self, request: "web.Request") -> "web.Response":
         return await self._handle_companion_asset(
