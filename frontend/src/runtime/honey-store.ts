@@ -66,8 +66,12 @@ export const useHoneyStore = create<HoneyRuntimeState>((set) => ({
     const committed = state.run.phase === "completed" && priorReply
       ? [...state.messages, { role: "assistant" as const, content: priorReply }]
       : state.messages;
+    const last = committed.at(-1);
+    const messages = state.run.phase === "failed" && last?.role === "user" && last.content === message
+      ? committed
+      : [...committed, { role: "user" as const, content: message }];
     return {
-      messages: [...committed, { role: "user", content: message }],
+      messages,
       run: { ...initialRunState, phase: "present" },
       sending: true,
       sendError: null,

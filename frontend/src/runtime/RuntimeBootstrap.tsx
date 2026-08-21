@@ -9,13 +9,28 @@ export function RuntimeBootstrap({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchCompanionBootstrap()
-      .then(hydrate)
-      .catch((error: unknown) => {
+    const delays = [0, 600, 1500, 3000];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const load = async (attempt: number) => {
+      try {
+        hydrate(await fetchCompanionBootstrap(controller.signal));
+      } catch (error: unknown) {
         if (controller.signal.aborted) return;
+        const nextDelay = delays[attempt + 1];
+        if (nextDelay !== undefined) {
+          timer = setTimeout(() => void load(attempt + 1), nextDelay);
+          return;
+        }
         fail(error instanceof Error ? error.message : "bootstrap_unavailable");
-      });
-    return () => controller.abort();
+      }
+    };
+
+    void load(0);
+    return () => {
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
   }, [fail, hydrate]);
 
   return children;

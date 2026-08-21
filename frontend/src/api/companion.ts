@@ -44,8 +44,8 @@ export type CompanionSettings = {
   settings: Record<string, unknown>;
 };
 
-export const fetchCompanionBootstrap = () =>
-  requestJson<CompanionBootstrap>("/api/companion/bootstrap");
+export const fetchCompanionBootstrap = (signal?: AbortSignal) =>
+  requestJson<CompanionBootstrap>("/api/companion/bootstrap", { signal });
 
 export const fetchCompanionSettings = () =>
   requestJson<CompanionSettings>("/api/companion/settings");

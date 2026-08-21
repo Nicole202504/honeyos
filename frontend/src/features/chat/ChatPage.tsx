@@ -28,11 +28,8 @@ export function ChatPage() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  async function send(event: FormEvent) {
-    event.preventDefault();
-    const message = draft.trim();
+  async function runMessage(message: string) {
     if (!message || sending || !sessionId || !sessionKey) return;
-    setDraft("");
     followRef.current = true;
     beginTurn(message);
     const controller = new AbortController();
@@ -46,6 +43,14 @@ export function ChatPage() {
     } finally {
       abortRef.current = null;
     }
+  }
+
+  function send(event: FormEvent) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (!message) return;
+    setDraft("");
+    void runMessage(message);
   }
 
   async function respondToApproval(choice: PermissionChoice) {
@@ -106,7 +111,14 @@ export function ChatPage() {
         {run.phase !== "idle" ? (
           <article className="flex max-w-[78ch] items-start gap-3 text-[15px] leading-7">
             <HoneyAvatar name={name} className="mt-0.5 size-8 rounded-full text-xs" />
-            <HoneyRun run={run} approvalPending={approvalPending} onAnswer={respondToApproval} />
+            <HoneyRun
+              run={run}
+              approvalPending={approvalPending}
+              onAnswer={respondToApproval}
+              onRetry={run.phase === "failed" && visible.at(-1)?.role === "user"
+                ? () => void runMessage(visible.at(-1)!.content)
+                : undefined}
+            />
           </article>
         ) : null}
         </div>

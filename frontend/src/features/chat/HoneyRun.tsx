@@ -63,10 +63,11 @@ function PermissionPart({ part, pending, onAnswer }: {
   );
 }
 
-export function HoneyRun({ run, approvalPending, onAnswer }: {
+export function HoneyRun({ run, approvalPending, onAnswer, onRetry }: {
   run: HoneyRunState;
   approvalPending: boolean;
   onAnswer: (choice: PermissionChoice) => void;
+  onRetry?: () => void;
 }) {
   if (run.phase === "idle") return null;
   return (
@@ -83,9 +84,12 @@ export function HoneyRun({ run, approvalPending, onAnswer }: {
         return <PermissionPart key={part.id} part={part} pending={approvalPending} onAnswer={onAnswer} />;
       })}
       {run.phase === "failed" ? (
-        <div className="mt-3 flex items-start gap-2 text-sm leading-6 text-[var(--danger)]">
-          <WarningCircleIcon className="mt-1 shrink-0" size={18} />
-          <p>刚才没有连上。你的消息还在，可以再发一次。</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm leading-6 text-[var(--danger)]">
+          <span className="flex items-start gap-2">
+            <WarningCircleIcon className="mt-1 shrink-0" size={18} />
+            <span>刚才没有连上，连接恢复后可以直接重试。</span>
+          </span>
+          {onRetry ? <Button type="button" variant="secondary" onClick={onRetry}>再试一次</Button> : null}
         </div>
       ) : null}
     </div>
