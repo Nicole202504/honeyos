@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { ChatMessage, CompanionBootstrap, HistoryItem, MemoryItem } from "../api/companion";
+import type { ChatMessage, CompanionBootstrap, CompanionProfileDetails, HistoryItem, MemoryItem, RecentChapter } from "../api/companion";
 import { initialRunState, type HoneyEvent, type HoneyRunState } from "./honey-events";
 import { reduceHoneyRun } from "./run-reducer";
 
@@ -13,6 +13,7 @@ type HoneyRuntimeState = {
   status: string;
   messages: ChatMessage[];
   memories: MemoryItem[];
+  recentChapters: RecentChapter[];
   history: HistoryItem[];
   profile: CompanionBootstrap["profile_details"];
   summarySettings: CompanionBootstrap["settings"];
@@ -25,6 +26,11 @@ type HoneyRuntimeState = {
   applyRunEvent: (event: HoneyEvent) => void;
   finishTurn: () => void;
   failTurn: (message: string) => void;
+  updateProfile: (profile: CompanionProfileDetails) => void;
+  replaceMemories: (memories: MemoryItem[]) => void;
+  replaceRecentChapters: (chapters: RecentChapter[]) => void;
+  removeMemory: (memoryId: string) => void;
+  startConversation: (sessionId: string, sessionKey: string) => void;
 };
 
 export const useHoneyStore = create<HoneyRuntimeState>((set) => ({
@@ -36,6 +42,7 @@ export const useHoneyStore = create<HoneyRuntimeState>((set) => ({
   status: "在这儿",
   messages: [],
   memories: [],
+  recentChapters: [],
   history: [],
   profile: {},
   summarySettings: {},
@@ -52,6 +59,7 @@ export const useHoneyStore = create<HoneyRuntimeState>((set) => ({
       status: data.profile.status || "在这儿",
       messages: data.messages || [],
       memories: data.memories || [],
+      recentChapters: data.recent_chapters || [],
       history: data.history || [],
       profile: data.profile_details || {},
       summarySettings: data.settings || {},
@@ -84,4 +92,21 @@ export const useHoneyStore = create<HoneyRuntimeState>((set) => ({
     sendError: message,
     run: reduceHoneyRun(state.run, { name: "error", payload: { message } }),
   })),
+  updateProfile: (profile) => set({
+    profile,
+    name: profile.companion_name || "Honey",
+  }),
+  replaceMemories: (memories) => set({ memories }),
+  replaceRecentChapters: (recentChapters) => set({ recentChapters }),
+  removeMemory: (memoryId) => set((state) => ({
+    memories: state.memories.filter((memory) => memory.id !== memoryId),
+  })),
+  startConversation: (sessionId, sessionKey) => set({
+    sessionId,
+    sessionKey,
+    messages: [],
+    run: initialRunState,
+    sending: false,
+    sendError: null,
+  }),
 }));

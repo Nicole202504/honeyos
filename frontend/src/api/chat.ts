@@ -1,6 +1,11 @@
 import type { HoneyEvent, PermissionChoice } from "../runtime/honey-events";
 import { apiPath, fetchWithLocalSessionRecovery } from "./client";
 
+export type ChatInput = string | Array<
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } }
+>;
+
 export function parseEventBlock(block: string): HoneyEvent | null {
   let name = "message";
   const data: string[] = [];
@@ -31,7 +36,7 @@ async function responseError(response: Response): Promise<Error> {
 export async function streamChat(options: {
   sessionId: string;
   sessionKey: string;
-  message: string;
+  message: ChatInput;
   signal?: AbortSignal;
   onEvent: (event: HoneyEvent) => void;
 }): Promise<void> {

@@ -40,6 +40,8 @@ Requires:
 """
 
 import asyncio
+import base64
+import binascii
 import errno
 import hashlib
 import hmac
@@ -1306,16 +1308,13 @@ def _security_headers_for_path(path: str) -> Dict[str, str]:
     """Return strict API headers or the bundled UI's same-origin CSP."""
 
     headers = dict(_SECURITY_HEADERS)
-    if path in {
-        "/",
-        "/file-open.js",
-        "/message-format.js",
-        "/run-state.js",
-        "/app.js",
-        "/styles.css",
-        "/icons.svg",
-    } or path.startswith("/honeyos/") or path.startswith("/new-ui") or bool(
-        re.match(r"^/p/[^/]+/new-ui(?:/|$)", path)
+    if path in {"/", "/memories", "/relationship", "/settings"} or path.startswith(
+        "/assets/"
+    ) or path.startswith("/new-ui") or bool(
+        re.match(
+            r"^/p/[^/]+/(?:new-ui(?:/|$)|assets/|memories$|relationship$|settings$|$)",
+            path,
+        )
     ):
         headers["Content-Security-Policy"] = (
             "default-src 'self'; "
@@ -2159,23 +2158,20 @@ class APIServerAdapter(BasePlatformAdapter):
         mirrors without starting a real aiohttp listener.
         """
         routes: List[tuple] = [
-            ("GET", "/", self._handle_companion_index),
+            ("GET", "/", self._handle_companion_react),
+            ("GET", "/memories", self._handle_companion_react),
+            ("GET", "/relationship", self._handle_companion_react),
+            ("GET", "/settings", self._handle_companion_react),
+            ("GET", "/{asset_path:assets/.*}", self._handle_companion_react),
             ("GET", "/new-ui", self._handle_companion_react_redirect),
             ("GET", "/new-ui/", self._handle_companion_react),
             ("GET", "/new-ui/{asset_path:.*}", self._handle_companion_react),
-            ("GET", "/file-open.js", self._handle_companion_file_guard),
-            ("GET", "/message-format.js", self._handle_companion_message_format),
-            ("GET", "/run-state.js", self._handle_companion_run_state),
-            ("GET", "/app.js", self._handle_companion_script),
-            ("GET", "/styles.css", self._handle_companion_styles),
-            ("GET", "/icons.svg", self._handle_companion_icons),
-            ("GET", "/honeyos/message-format.js", self._handle_companion_message_format),
-            ("GET", "/honeyos/run-state.js", self._handle_companion_run_state),
-            ("GET", "/honeyos/app.js", self._handle_companion_script),
-            ("GET", "/honeyos/styles.css", self._handle_companion_styles),
-            ("GET", "/honeyos/icons.svg", self._handle_companion_icons),
             ("GET", "/api/companion/bootstrap", self._handle_companion_bootstrap),
             ("GET", "/api/companion/settings", self._handle_companion_settings),
+            ("GET", "/api/companion/avatar", self._handle_companion_avatar),
+            ("GET", "/api/companion/avatar/status", self._handle_companion_avatar_status),
+            ("POST", "/api/companion/avatar", self._handle_companion_avatar_update),
+            ("DELETE", "/api/companion/avatar", self._handle_companion_avatar_delete),
             ("GET", "/api/companion/mcp/servers", self._handle_companion_mcp_servers),
             (
                 "POST",
@@ -2297,17 +2293,6 @@ class APIServerAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _companion_asset_path(filename: str) -> Path:
-        from honeyos.companion.web_customization import resolve_companion_web_asset
-
-        bundled_root = (
-            Path(__file__).resolve().parents[2]
-            / "companion"
-            / "web_assets"
-        )
-        return resolve_companion_web_asset(bundled_root, filename)
-
-    @staticmethod
     def _companion_react_asset_path(asset_path: str) -> Path:
         from honeyos.companion.web_customization import resolve_companion_react_asset
 
@@ -2326,44 +2311,6 @@ class APIServerAdapter(BasePlatformAdapter):
         except ValueError:
             return remote == "localhost"
 
-    async def _handle_companion_asset(
-        self,
-        request: "web.Request",
-        filename: str,
-        content_type: str,
-        *,
-        establish_session: bool = False,
-    ) -> "web.Response":
-        if not self._request_is_loopback(request):
-            return web.Response(status=404)
-        try:
-            body = await asyncio.to_thread(
-                self._companion_asset_path(filename).read_bytes
-            )
-        except OSError:
-            return web.Response(status=404)
-        response = web.Response(body=body, content_type=content_type)
-        response.headers["Cache-Control"] = (
-            "no-store" if establish_session else "no-cache"
-        )
-        if establish_session:
-            response.set_cookie(
-                "honeyos_local",
-                self._local_web_token,
-                httponly=True,
-                samesite="Strict",
-                path="/",
-            )
-        return response
-
-    async def _handle_companion_index(self, request: "web.Request") -> "web.Response":
-        return await self._handle_companion_asset(
-            request,
-            "index.html",
-            "text/html",
-            establish_session=True,
-        )
-
     async def _handle_companion_react_redirect(
         self, request: "web.Request"
     ) -> "web.Response":
@@ -2372,7 +2319,7 @@ class APIServerAdapter(BasePlatformAdapter):
         return web.HTTPFound(location=f"{request.path}/")
 
     async def _handle_companion_react(self, request: "web.Request") -> "web.Response":
-        """Serve the opt-in React UI and fall back to its index for routes."""
+        """Serve the React UI at the product root and its `/new-ui` alias."""
 
         if not self._request_is_loopback(request):
             return web.Response(status=404)
@@ -2402,38 +2349,6 @@ class APIServerAdapter(BasePlatformAdapter):
         else:
             response.headers["Cache-Control"] = "no-cache"
         return response
-
-    async def _handle_companion_script(self, request: "web.Request") -> "web.Response":
-        return await self._handle_companion_asset(
-            request, "app.js", "application/javascript"
-        )
-
-    async def _handle_companion_message_format(
-        self, request: "web.Request"
-    ) -> "web.Response":
-        return await self._handle_companion_asset(
-            request, "message-format.js", "application/javascript"
-        )
-
-    async def _handle_companion_run_state(
-        self, request: "web.Request"
-    ) -> "web.Response":
-        return await self._handle_companion_asset(
-            request, "run-state.js", "application/javascript"
-        )
-
-    async def _handle_companion_file_guard(
-        self, request: "web.Request"
-    ) -> "web.Response":
-        return await self._handle_companion_asset(
-            request, "file-open.js", "application/javascript"
-        )
-
-    async def _handle_companion_styles(self, request: "web.Request") -> "web.Response":
-        return await self._handle_companion_asset(request, "styles.css", "text/css")
-
-    async def _handle_companion_icons(self, request: "web.Request") -> "web.Response":
-        return await self._handle_companion_asset(request, "icons.svg", "image/svg+xml")
 
     async def _handle_companion_bootstrap(
         self, request: "web.Request"
@@ -2488,8 +2403,16 @@ class APIServerAdapter(BasePlatformAdapter):
         for item in raw_messages:
             if not self._is_companion_visible_message(item):
                 continue
+            display_content = self._companion_display_content(item.get("content"))
             messages.append(
-                {"role": item["role"], "content": item["content"].strip()}
+                {
+                    "role": item["role"],
+                    "content": (
+                        _resolve_media_to_data_urls(display_content)
+                        if item["role"] == "assistant"
+                        else display_content
+                    ),
+                }
             )
 
         from honeyos.companion.continuity import StructuredMemoryStore
@@ -2501,9 +2424,15 @@ class APIServerAdapter(BasePlatformAdapter):
         home = get_honeyos_home()
         lane_key = build_session_key(source)
         managed_profile = load_companion_profile(home)
+        memory_store = StructuredMemoryStore(home)
         structured_memory_items = await asyncio.to_thread(
-            StructuredMemoryStore(home).list_active,
+            memory_store.list_active,
             lane_key=lane_key,
+        )
+        recent_chapters = await asyncio.to_thread(
+            memory_store.list_chapters,
+            lane_key=lane_key,
+            limit=50,
         )
         persistent_memory_items = await asyncio.to_thread(
             list_persistent_memories,
@@ -2551,6 +2480,16 @@ class APIServerAdapter(BasePlatformAdapter):
                 "expires_at": item.expires_at.isoformat() if item.expires_at else None,
             }
 
+        def _chapter_payload(item: Any) -> Dict[str, Any]:
+            return {
+                "id": item.id,
+                "title": item.title,
+                "summary": item.summary,
+                "source_session_id": item.source_session_id,
+                "source_message_ids": list(item.source_message_ids),
+                "created_at": item.created_at.isoformat(),
+            }
+
         distillation_model = "auto"
         try:
             from honeyos.runtime.config import load_config_readonly
@@ -2583,6 +2522,9 @@ class APIServerAdapter(BasePlatformAdapter):
                 "session_key": lane_key,
                 "messages": messages,
                 "memories": [_memory_payload(item) for item in memory_items],
+                "recent_chapters": [
+                    _chapter_payload(item) for item in recent_chapters
+                ],
                 "history": history,
                 "settings": {
                     "memory_location": "local",
@@ -3030,6 +2972,113 @@ class APIServerAdapter(BasePlatformAdapter):
                 },
             }
         )
+
+    @staticmethod
+    def _companion_avatar_media_type(body: bytes) -> Optional[str]:
+        if body.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if body.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if body.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+            return "image/webp"
+        return None
+
+    @staticmethod
+    def _companion_avatar_file() -> Path:
+        from honeyos.companion.web_customization import companion_avatar_path
+
+        return companion_avatar_path()
+
+    async def _handle_companion_avatar(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        path = self._companion_avatar_file()
+        try:
+            body = await asyncio.to_thread(path.read_bytes)
+        except OSError:
+            return web.Response(status=404)
+        media_type = self._companion_avatar_media_type(body)
+        if not media_type:
+            return web.Response(status=404)
+        return web.Response(
+            body=body,
+            content_type=media_type,
+            headers={"Cache-Control": "private, max-age=31536000, immutable"},
+        )
+
+    async def _handle_companion_avatar_status(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        path = self._companion_avatar_file()
+        try:
+            stat = await asyncio.to_thread(path.stat)
+            body = await asyncio.to_thread(path.read_bytes)
+            exists = self._companion_avatar_media_type(body) is not None
+        except OSError:
+            exists = False
+            stat = None
+        return web.json_response(
+            {"exists": exists, "version": str(stat.st_mtime_ns) if exists and stat else ""}
+        )
+
+    async def _handle_companion_avatar_update(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        payload, err = await self._read_json_body(request)
+        if err:
+            return err
+        data_url = payload.get("data_url")
+        if not isinstance(data_url, str):
+            return web.json_response(
+                _openai_error("Avatar image is required", code="invalid_avatar"),
+                status=400,
+            )
+        match = re.fullmatch(
+            r"data:image/(?:jpeg|png|gif|webp);base64,([A-Za-z0-9+/=\r\n]+)",
+            data_url,
+        )
+        try:
+            body = base64.b64decode(match.group(1), validate=True) if match else b""
+        except (binascii.Error, ValueError):
+            body = b""
+        if not body or len(body) > 3 * 1024 * 1024 or not self._companion_avatar_media_type(body):
+            return web.json_response(
+                _openai_error("Avatar image is invalid or too large", code="invalid_avatar"),
+                status=400,
+            )
+        path = self._companion_avatar_file()
+
+        def write_avatar() -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+            temporary.write_bytes(body)
+            os.replace(temporary, path)
+
+        await asyncio.to_thread(write_avatar)
+        stat = await asyncio.to_thread(path.stat)
+        return web.json_response({"success": True, "version": str(stat.st_mtime_ns)})
+
+    async def _handle_companion_avatar_delete(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        path = self._companion_avatar_file()
+        try:
+            await asyncio.to_thread(path.unlink)
+        except FileNotFoundError:
+            pass
+        return web.json_response({"success": True})
 
     async def _handle_companion_new(
         self, request: "web.Request"
@@ -4558,8 +4607,7 @@ class APIServerAdapter(BasePlatformAdapter):
         if not isinstance(message, dict):
             return False
         role = message.get("role")
-        content = message.get("content")
-        if role not in {"user", "assistant"} or not isinstance(content, str):
+        if role not in {"user", "assistant"}:
             return False
         if message.get("display_kind") in {
             "hidden",
@@ -4570,7 +4618,7 @@ class APIServerAdapter(BasePlatformAdapter):
             return False
         if role == "assistant" and message.get("tool_calls"):
             return False
-        text = content.strip()
+        text = APIServerAdapter._companion_display_content(message.get("content"))
         if text.startswith(
             (
                 "[HoneyOS proactive topic seed;",
@@ -4579,6 +4627,37 @@ class APIServerAdapter(BasePlatformAdapter):
         ):
             return False
         return bool(text)
+
+    @staticmethod
+    def _companion_display_content(content: object) -> str:
+        """Turn persisted text or multimodal content into safe chat markup."""
+        if isinstance(content, str):
+            return content.strip()
+        if not isinstance(content, list):
+            return ""
+
+        display_parts: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            part_type = str(part.get("type") or "").strip().lower()
+            if part_type in {"text", "input_text"}:
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    display_parts.append(text.strip())
+                continue
+            if part_type not in {"image_url", "input_image"}:
+                continue
+            image_value = part.get("image_url")
+            if isinstance(image_value, dict):
+                image_value = image_value.get("url")
+            if not isinstance(image_value, str):
+                image_value = part.get("image") or part.get("url")
+            if isinstance(image_value, str) and image_value.startswith(
+                ("data:image/", "https://", "http://")
+            ):
+                display_parts.append(f"![用户上传的图片]({image_value})")
+        return "\n\n".join(display_parts).strip()
 
     async def _read_json_body(self, request: "web.Request") -> tuple[Dict[str, Any], Optional["web.Response"]]:
         try:
@@ -4621,7 +4700,17 @@ class APIServerAdapter(BasePlatformAdapter):
     ) -> bool:
         """Schedule the same post-turn memory review used by IM channels."""
 
-        if not str(gateway_session_key or "").endswith(":companion:dm:owner"):
+        # The local companion lane is created by ``_handle_companion_bootstrap``
+        # from an API_SERVER ``SessionSource``.  Its canonical key is therefore
+        # ``agent:main:api_server:dm:local-owner``.  The previous guard checked
+        # for a synthetic ``:companion:dm:owner`` suffix that the product never
+        # emits, so every successful web turn silently skipped distillation.
+        # Keep the legacy suffix during upgrades, but match the real owner lane.
+        lane_key = str(gateway_session_key or "").strip()
+        if not (
+            lane_key.endswith(":api_server:dm:local-owner")
+            or lane_key.endswith(":companion:dm:owner")
+        ):
             return False
         runner = self.gateway_runner
         scheduler = getattr(
@@ -4632,7 +4721,7 @@ class APIServerAdapter(BasePlatformAdapter):
         try:
             return bool(
                 scheduler(
-                    lane_key=str(gateway_session_key),
+                    lane_key=lane_key,
                     chat_type="dm",
                     session_id=session_id,
                     messages=None,
@@ -5009,10 +5098,18 @@ class APIServerAdapter(BasePlatformAdapter):
             runtime = result.get("runtime") or {}
         if not runtime and isinstance(usage, dict):
             runtime = usage.get("runtime") or {}
-        self._schedule_companion_memory_distillation(
-            gateway_session_key=gateway_session_key,
-            session_id=effective_session_id or session_id,
-            main_runtime=runtime,
+        # The HTTP reply is the foreground path.  Queue memory review for the
+        # next event-loop tick so even the small amount of scheduling work
+        # cannot delay returning the companion's answer.
+        loop = asyncio.get_running_loop()
+        review_runtime = dict(runtime)
+        review_session_id = effective_session_id or session_id
+        loop.call_soon(
+            lambda review_runtime=review_runtime, review_session_id=review_session_id: self._schedule_companion_memory_distillation(
+                gateway_session_key=gateway_session_key,
+                session_id=review_session_id,
+                main_runtime=review_runtime,
+            )
         )
         runtime = self._sanitize_runtime_metadata(
             runtime=runtime,
@@ -5119,6 +5216,7 @@ class APIServerAdapter(BasePlatformAdapter):
         activity_seq = 0
         active_activity_ids: Dict[str, List[str]] = {}
         active_activity_args: Dict[str, Any] = {}
+        memory_review: Dict[str, Any] | None = None
         def _event_payload(name: str, payload: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
             nonlocal seq
             seq += 1
@@ -5219,6 +5317,7 @@ class APIServerAdapter(BasePlatformAdapter):
             )
 
         async def _run_and_signal() -> None:
+            nonlocal memory_review
             try:
                 await queue.put(_event_payload("run.started", {
                     "user_message": {"role": "user", "content": user_message},
@@ -5250,11 +5349,14 @@ class APIServerAdapter(BasePlatformAdapter):
                     effective_runtime = result.get("runtime") or {}
                 if not effective_runtime and isinstance(usage, dict):
                     effective_runtime = usage.get("runtime") or {}
-                self._schedule_companion_memory_distillation(
-                    gateway_session_key=gateway_session_key,
-                    session_id=effective_session_id,
-                    main_runtime=effective_runtime,
-                )
+                # Store the review request, but do not schedule it yet.  The
+                # streaming loop schedules it only after the completed answer
+                # has been written to the browser.
+                memory_review = {
+                    "gateway_session_key": gateway_session_key,
+                    "session_id": effective_session_id,
+                    "main_runtime": effective_runtime,
+                }
                 effective_runtime = self._sanitize_runtime_metadata(
                     runtime=effective_runtime,
                     requested_runtime=runtime_request.get("requested"),
@@ -5323,6 +5425,10 @@ class APIServerAdapter(BasePlatformAdapter):
                     break
                 name, payload = item
                 await response.write(_sse_frame(payload, event=name, ensure_ascii=False))
+                if name == "run.completed" and memory_review is not None:
+                    review = memory_review
+                    memory_review = None
+                    self._schedule_companion_memory_distillation(**review)
         except (asyncio.CancelledError, ConnectionResetError):
             task.cancel()
             raise

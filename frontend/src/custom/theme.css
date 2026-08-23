@@ -1,0 +1,33 @@
+/* User-owned HoneyOS theme layer. Loaded after the product design tokens. */
+
+:root {
+  --honeyos-custom-message-max-width: 78ch;
+  --honeyos-custom-card-radius: var(--radius-lg);
+  --honeyos-custom-control-radius: var(--radius-md);
+}
+
+[data-honeyos-custom-app="true"] {
+  min-height: 100dvh;
+}
+
+[data-honeyos-custom-message] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --honeyos-custom-message-max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-honeyos-custom-app="true"] *,
+  [data-honeyos-custom-app="true"] *::before,
+  [data-honeyos-custom-app="true"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

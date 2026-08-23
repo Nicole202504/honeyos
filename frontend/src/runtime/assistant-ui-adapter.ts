@@ -20,7 +20,7 @@ export function toAssistantParts(parts: RunPart[]): HoneyAssistantPart[] {
     if (part.kind === "tool") {
       return {
         type: "tool-call",
-        toolName: part.activity.tool_label || part.activity.kind,
+        toolName: part.activity.tool_key || part.activity.tool_label || part.activity.kind,
         summary: part.activity.title,
         status: part.activity.state === "completed" ? "complete" : "running",
       };

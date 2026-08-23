@@ -1,6 +1,6 @@
 ---
 name: honeyos-builder
-description: "即时调整 HoneyOS 网页外观；其他产品行为改进做成安全候选版本，用户确认后换上。"
+description: "即时调整 HoneyOS 网页外观或给伴侣更换头像；其他产品行为改进做成安全候选版本，用户确认后换上。"
 version: 0.3.0
 author: HoneyOS
 license: MIT
@@ -14,7 +14,7 @@ metadata:
 
 # HoneyOS Builder
 
-用于用户明确希望改变 HoneyOS 产品本身的页面、陪伴表达或可扩展功能。纯网页静态资源使用项目内的即时覆盖层，刷新页面即可看到；其他产品代码仍在单独的候选工作区完成，用户说可以后才替换正在使用的版本。
+用于用户明确希望改变 HoneyOS 产品本身的页面、陪伴表达或可扩展功能。React 网页使用项目内的自定义层和构建覆盖，刷新页面即可看到；其他产品代码仍在单独的候选工作区完成，用户说可以后才替换正在使用的版本。
 
 当前自动换版只支持 macOS 和 Linux；Windows 上不要尝试启用候选版本。
 
@@ -30,16 +30,25 @@ metadata:
 
 ## 网页界面：直接改，即时生效
 
-如果修改范围完全位于 `honeyos/companion/web_assets/**`，不要创建候选、不要运行 `inspect` 或 `activate`，也不要重启网关。
+如果修改范围完全位于 React 前端的 `frontend/src/custom/**` 和主题变量，不要创建候选、不要运行 `inspect` 或 `activate`，也不要重启网关。
 
-- 可编辑目录固定为当前 HoneyOS Projects 下的 `HoneyOS UI/web_assets/`。
-- 第一次修改某个文件时，从真实本地源码的 `honeyos/companion/web_assets/` 复制该文件到上述目录；只复制确实要改的文件。
-- 再次修改前，把旧文件备份到 `HoneyOS UI/backups/<时间>/web_assets/`。
-- 只允许这些文件名：`index.html`、`app.js`、`message-format.js`、`run-state.js`、`file-open.js`、`styles.css`、`icons.svg`。
-- 修改后做对应的静态检查，然后请用户刷新页面查看。不要把刷新说成激活，不要声称需要健康检查。
-- 若用户要求撤销，把最近一次备份复制回来；若是首次修改且没有备份，删除对应覆盖文件即可恢复内置版本。
+- 工作目录固定为当前 HoneyOS Projects 下的 `HoneyOS UI/frontend/`，构建输出固定为同级 `react_dist/`。
+- 第一次修改前复制完整前端源码；再次修改前使用前端自带的快照命令保存当前自定义层。
+- 普通个性化只改 `src/custom/` 和主题变量，不接管会话状态、工具事件、审批或后端传输。
+- 构建通过后把完整产物写入 `HoneyOS UI/react_dist/`，刷新页面查看；不要把刷新说成激活，也不要声称需要健康检查。
+- 若自定义代码异常，可使用 `/?honeyos-safe-ui=1` 临时绕过自定义组件，或恢复最近一次快照后重新构建。
 
-网页覆盖层由网关在每次请求时读取，所以不需要重启服务。HTML 中引用的资源版本号有变化时同步更新，避免浏览器继续使用旧缓存。
+React 构建覆盖层由网关在每次请求时读取，所以不需要重启服务。每次构建会生成带内容哈希的新资源名，避免浏览器继续使用旧缓存。
+
+### 给自己换头像
+
+用户明确要求 HoneyOS 给自己设置或更换头像时，不修改页面源码，也不走候选激活：
+
+- 把最终图片直接写入 `HoneyOS UI/avatars/companion-avatar`，文件名固定且没有扩展名。
+- 文件内容必须是 JPEG、PNG、GIF 或 WebP 图片，最大 3 MB；需要时先缩放或转换。
+- 写入前可把旧头像备份到 `HoneyOS UI/backups/<时间>/avatars/companion-avatar`。
+- 写完请用户刷新页面；头像舞台、对话头像和“我们”页面会一起更新。
+- 不要替用户更换“你的头像”；用户头像只在其浏览器中由用户本人选择。
 
 ## 可修改范围
 

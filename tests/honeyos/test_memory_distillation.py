@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -9,9 +10,11 @@ from honeyos.companion.distillation import (
     DistillationSettings,
     MemoryDistiller,
     _main_runtime_from_config,
+    active_honeyos_distiller,
     extract_with_auxiliary_model,
     repair_legacy_completed_rejections,
     repair_legacy_distillation_failures,
+    repair_legacy_missing_recent_chapters,
 )
 from honeyos.companion.continuity import StructuredMemoryStore
 from honeyos.agent.auxiliary_client import _validate_llm_response
@@ -19,6 +22,34 @@ from honeyos.agent.auxiliary_client import _validate_llm_response
 
 NOW = datetime(2026, 8, 7, 8, 0, tzinfo=timezone.utc)
 LANE = "agent:main:weixin:dm:user-a"
+
+
+def test_active_distiller_recovers_initialized_honeyos_home_without_runtime_env(
+    monkeypatch, tmp_path
+):
+    (tmp_path / "runtime.json").write_text(
+        json.dumps(
+            {
+                "honeyos_version": "0.3.1",
+                "data_directory": str(tmp_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HONEYOS_HOME", str(tmp_path))
+    monkeypatch.delenv("HONEYOS_RUNTIME_ID", raising=False)
+
+    distiller = active_honeyos_distiller()
+
+    assert distiller is not None
+    assert distiller.home == tmp_path.resolve()
+
+
+def test_active_distiller_still_rejects_unidentified_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("HONEYOS_HOME", str(tmp_path))
+    monkeypatch.delenv("HONEYOS_RUNTIME_ID", raising=False)
+
+    assert active_honeyos_distiller() is None
 
 
 def _messages(count: int) -> list[dict]:
@@ -65,7 +96,76 @@ async def test_periodic_distillation_waits_for_twenty_new_messages(tmp_path):
 
     assert result is not None
     assert result.status == "completed"
+    assert result.chapter_id
+    chapters = StructuredMemoryStore(tmp_path).list_chapters(lane_key=LANE)
+    assert len(chapters) == 1
+    assert chapters[0].source_message_ids == tuple(range(1, 21))
     assert calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_model_chapter_becomes_recent_conversation_summary(tmp_path):
+    async def extractor(_job, _active, _runtime):
+        return json.dumps(
+            {
+                "chapter": {
+                    "title": "一起规划周末",
+                    "summary": "你们讨论了周末出门的计划，并决定晚些时候再确认地点。",
+                    "evidence_message_ids": [1, 2, 19, 20],
+                },
+                "operations": [],
+            },
+            ensure_ascii=False,
+        )
+
+    distiller = MemoryDistiller(
+        tmp_path,
+        settings=DistillationSettings(trigger_messages=20),
+        extractor=extractor,
+    )
+    result = await distiller.distill_if_due(
+        lane_key=LANE,
+        session_id="session-recent",
+        messages=_messages(20),
+        reason="periodic",
+        now=NOW,
+    )
+
+    assert result is not None and result.status == "completed"
+    chapters = StructuredMemoryStore(tmp_path).list_chapters(lane_key=LANE)
+    assert [(item.title, item.summary) for item in chapters] == [
+        ("一起规划周末", "你们讨论了周末出门的计划，并决定晚些时候再确认地点。")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_upgrade_reopens_latest_batch_when_recent_chapters_are_missing(tmp_path):
+    async def extractor(_job, _active, _runtime):
+        return '{"operations":[]}'
+
+    distiller = MemoryDistiller(
+        tmp_path,
+        settings=DistillationSettings(trigger_messages=20),
+        extractor=extractor,
+    )
+    await distiller.distill_if_due(
+        lane_key=LANE,
+        session_id="legacy-session",
+        messages=_messages(20),
+        reason="periodic",
+        now=NOW,
+    )
+    with sqlite3.connect(tmp_path / "continuity.db") as connection:
+        connection.execute("DELETE FROM conversation_chapters")
+
+    assert repair_legacy_missing_recent_chapters(tmp_path) == 1
+    with sqlite3.connect(tmp_path / "continuity.db") as connection:
+        status = connection.execute("SELECT status FROM distillation_runs").fetchone()[0]
+        cursor = connection.execute(
+            "SELECT last_source_row_id FROM distillation_state"
+        ).fetchone()[0]
+    assert status == "failed"
+    assert cursor == 0
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ let localSessionRefresh: Promise<Response> | null = null;
 
 async function refreshLocalSession(): Promise<boolean> {
   if (!localSessionRefresh) {
-    localSessionRefresh = fetch(`${profilePrefix()}/new-ui/`, {
+    localSessionRefresh = fetch(`${profilePrefix()}/`, {
       credentials: "same-origin",
       cache: "no-store",
     }).finally(() => {
@@ -39,7 +39,16 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
     },
   });
   if (!response.ok) {
-    throw new Error(`request_failed:${response.status}`);
+    let message = `request_failed:${response.status}`;
+    try {
+      const payload = await response.json() as { error?: string | { message?: string }; message?: string };
+      message = typeof payload.error === "string"
+        ? payload.error
+        : payload.error?.message || payload.message || message;
+    } catch {
+      // A restarting local service may close without a JSON body.
+    }
+    throw new Error(message);
   }
   return response.json() as Promise<T>;
 }

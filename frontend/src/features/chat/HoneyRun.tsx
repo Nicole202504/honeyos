@@ -1,4 +1,22 @@
-import { CaretDownIcon, CheckIcon, CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
+import {
+  BookBookmarkIcon,
+  BrainIcon,
+  BrowserIcon,
+  CaretRightIcon,
+  CheckCircleIcon,
+  CircleNotchIcon,
+  DesktopIcon,
+  FileTextIcon,
+  GlobeIcon,
+  ImageIcon,
+  MagnifyingGlassIcon,
+  PencilSimpleIcon,
+  PuzzlePieceIcon,
+  TerminalWindowIcon,
+  WarningCircleIcon,
+  WrenchIcon,
+} from "@phosphor-icons/react";
 
 import { Button } from "../../components/ui/Button";
 import { HoneyMessage } from "../../components/honey/HoneyMessage";
@@ -11,21 +29,99 @@ const choiceLabels: Record<PermissionChoice, string> = {
   deny: "先别动",
 };
 
+const toolNames: Record<string, string> = {
+  web_search: "网页搜索",
+  browser_search: "浏览器搜索",
+  web_fetch: "读取网页",
+  web_extract: "提取网页内容",
+  browser_navigate: "浏览器",
+  read_file: "读取文件",
+  read_many_files: "读取多个文件",
+  write_file: "写入文件",
+  edit_file: "修改文件",
+  patch: "修改文件",
+  terminal: "终端",
+  bash: "终端",
+  execute_code: "代码执行",
+  code_execution: "代码执行",
+  image_generate: "图片生成",
+  vision_analyze: "图片理解",
+  memory: "记忆",
+  companion_memory: "伴侣记忆",
+  todo: "待办事项",
+  todo_write: "待办事项",
+  cronjob: "定时任务",
+  skills: "能力",
+  skills_list: "能力列表",
+  skill_view: "能力说明",
+  skill_manage: "能力管理",
+  skill_marketplace: "能力市场",
+  mcp: "外部能力",
+  computer_use: "电脑操作",
+  tool: "HoneyOS 工具",
+};
+
+function ToolIcon({ toolKey, kind, className }: { toolKey: string; kind: string; className?: string }) {
+  const props = { size: 19, className, weight: "regular" as const };
+  if (["web_search", "browser_search", "x_search", "maps"].includes(toolKey)) return <MagnifyingGlassIcon {...props} />;
+  if (["web_fetch", "web_extract"].includes(toolKey)) return <GlobeIcon {...props} />;
+  if (toolKey === "browser_navigate") return <BrowserIcon {...props} />;
+  if (["read_file", "read_many_files", "vision_analyze", "session_search"].includes(toolKey)) return <FileTextIcon {...props} />;
+  if (["write_file", "edit_file", "patch", "document_create"].includes(toolKey)) return <PencilSimpleIcon {...props} />;
+  if (["terminal", "bash", "execute_code", "code_execution"].includes(toolKey)) return <TerminalWindowIcon {...props} />;
+  if (toolKey === "image_generate") return <ImageIcon {...props} />;
+  if (["memory", "companion_memory", "proactive_companion", "memory_get"].includes(toolKey)) return <BookBookmarkIcon {...props} />;
+  if (["skills", "skills_list", "skill_view", "skill_manage", "skill_marketplace", "mcp"].includes(toolKey)) return <PuzzlePieceIcon {...props} />;
+  if (toolKey === "computer_use") return <DesktopIcon {...props} />;
+  if (kind === "checking") return <MagnifyingGlassIcon {...props} />;
+  if (kind === "reading") return <FileTextIcon {...props} />;
+  if (kind === "making") return <PencilSimpleIcon {...props} />;
+  if (kind === "remembering") return <BookBookmarkIcon {...props} />;
+  return <WrenchIcon {...props} />;
+}
+
 function ToolPart({ part }: { part: Extract<RunPart, { kind: "tool" }> }) {
   const completed = part.activity.state === "completed";
   const failed = part.activity.state === "failed";
+  const toolKey = part.activity.tool_key || "tool";
+  const toolName = part.activity.tool_label || toolNames[toolKey] || toolNames.tool;
   return (
-    <details className="group/tool my-2 border-l-2 border-[var(--border-strong)] pl-4">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-3 py-1 text-sm marker:hidden">
-        {failed ? <WarningCircleIcon className="text-[var(--danger)]" size={18} /> : completed ? <CheckIcon className="text-[var(--success)]" size={18} /> : <CircleNotchIcon className="animate-spin text-[var(--accent)]" size={18} />}
-        <span className="min-w-0 flex-1 font-medium">{part.activity.title || "正在处理"}</span>
-        <CaretDownIcon className="text-[var(--foreground-faint)] transition-transform group-open/tool:rotate-180" size={16} />
+    <details className="group/tool honey-tool-row">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 py-2 text-sm marker:hidden sm:px-3.5">
+        <span className={failed ? "text-[var(--danger)]" : completed ? "text-[var(--foreground-faint)]" : "text-[var(--accent)]"}>
+          {failed ? <WarningCircleIcon size={18} /> : completed ? <ToolIcon toolKey={toolKey} kind={part.activity.kind} /> : <CircleNotchIcon className="animate-spin" size={18} />}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium text-[var(--foreground-muted)] group-open/tool:text-[var(--foreground)]">{part.activity.title || "正在处理"}</span>
+        <span className={failed ? "shrink-0 text-xs text-[var(--danger)]" : "shrink-0 text-xs text-[var(--foreground-faint)]"}>
+          {failed ? "未完成" : completed ? "完成" : "进行中"}
+        </span>
+        <CaretRightIcon className="shrink-0 text-[var(--foreground-faint)] transition-transform group-open/tool:rotate-90" size={15} />
       </summary>
-      <div className="pb-3 pl-8 text-sm leading-6 text-[var(--foreground-muted)]">
-        <p>{part.activity.tool_label || "HoneyOS 工具"}</p>
+      <div className="mx-3 mb-3 rounded-[var(--radius-sm)] bg-[var(--surface-raised)] px-3 py-2.5 text-xs leading-5 text-[var(--foreground-muted)] sm:mx-3.5">
+        <p className="flex items-center gap-2">
+          <span>使用 {toolName}</span>
+          {toolKey !== "tool" ? <code className="truncate text-[0.75rem] text-[var(--foreground-faint)]">{toolKey}</code> : null}
+        </p>
         {part.activity.detail ? <p className="mt-1 break-words">{part.activity.detail}</p> : null}
       </div>
     </details>
+  );
+}
+
+function ToolTimeline({ parts }: { parts: Extract<RunPart, { kind: "tool" }>[] }) {
+  const active = parts.find((part) => !["completed", "failed"].includes(part.activity.state));
+  const failed = parts.some((part) => part.activity.state === "failed");
+  const latest = active || parts.at(-1);
+  return (
+    <section className="honey-tool-sequence my-3" aria-label="处理过程">
+      <div className="flex items-center gap-2 px-1 pb-1.5 text-xs text-[var(--foreground-faint)]">
+        {failed ? <WarningCircleIcon className="text-[var(--danger)]" size={15} /> : active ? <CircleNotchIcon className="animate-spin text-[var(--accent)]" size={15} /> : <CheckCircleIcon className="text-[var(--success)]" size={15} />}
+        <span>{active ? `正在处理 ${parts.indexOf(active) + 1}/${parts.length}` : failed ? "有一步没有完成" : parts.length === 1 ? "处理过程" : `处理了 ${parts.length} 步`}</span>
+      </div>
+      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)]">
+        {parts.map((part) => <ToolPart key={part.id} part={part} />)}
+      </div>
+    </section>
   );
 }
 
@@ -70,19 +166,41 @@ export function HoneyRun({ run, approvalPending, onAnswer, onRetry }: {
   onRetry?: () => void;
 }) {
   if (run.phase === "idle") return null;
+  const renderedParts: ReactNode[] = [];
+  for (let index = 0; index < run.parts.length;) {
+    const part = run.parts[index];
+    if (part.kind === "tool") {
+      const tools: Extract<RunPart, { kind: "tool" }>[] = [];
+      while (index < run.parts.length && run.parts[index].kind === "tool") {
+        tools.push(run.parts[index] as Extract<RunPart, { kind: "tool" }>);
+        index += 1;
+      }
+      renderedParts.push(<ToolTimeline key={`timeline-${tools[0].id}`} parts={tools} />);
+      continue;
+    }
+    if (part.kind === "text") {
+      renderedParts.push(
+        <HoneyMessage
+          key={part.id}
+          content={part.content}
+          role="assistant"
+          messageId={part.id}
+          isStreaming={part.status === "streaming"}
+        />,
+      );
+    }
+    else renderedParts.push(<PermissionPart key={part.id} part={part} pending={approvalPending} onAnswer={onAnswer} />);
+    index += 1;
+  }
   return (
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0">
       {run.presence && !run.parts.length ? (
-        <div className="flex items-center gap-2 py-2 text-sm text-[var(--foreground-muted)]">
-          <CircleNotchIcon className="animate-spin text-[var(--accent)]" size={18} />
-          <span>{run.presence.title || "正在想"}</span>
+        <div className="flex min-h-9 items-center gap-2 text-sm text-[var(--foreground-muted)]">
+          <BrainIcon className="animate-pulse text-[var(--accent)]" size={18} />
+          <span className="font-medium">{run.presence.title || "正在想"}</span>
         </div>
       ) : null}
-      {run.parts.map((part) => {
-        if (part.kind === "text") return <HoneyMessage key={part.id} content={part.content} />;
-        if (part.kind === "tool") return <ToolPart key={part.id} part={part} />;
-        return <PermissionPart key={part.id} part={part} pending={approvalPending} onAnswer={onAnswer} />;
-      })}
+      {renderedParts}
       {run.phase === "failed" ? (
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm leading-6 text-[var(--danger)]">
           <span className="flex items-start gap-2">

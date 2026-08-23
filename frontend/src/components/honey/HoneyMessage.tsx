@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { HoneyOSMessageFrame } from "../../custom/runtime";
+
 const hiddenImage = "[图片数据已隐藏]";
 const hiddenLongData = "[过长的数据已隐藏]";
 const hiddenLongLink = "[过长的链接已隐藏]";
@@ -9,6 +11,32 @@ export function safeDisplayText(source: string): string {
     .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]{256,}/gi, hiddenImage)
     .replace(/https?:\/\/[^\s]{500,}/gi, hiddenLongLink)
     .replace(/[a-z0-9+/]{512,}={0,2}/gi, hiddenLongData);
+}
+
+type MessagePart =
+  | { kind: "text"; content: string }
+  | { kind: "image"; src: string; alt: string };
+
+const inlineImagePattern = /!\[([^\]\n]{0,160})\]\((data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=\r\n]+)\)/gi;
+
+export function extractMessageParts(source: string): MessagePart[] {
+  const value = String(source || "");
+  const parts: MessagePart[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  inlineImagePattern.lastIndex = 0;
+  while ((match = inlineImagePattern.exec(value))) {
+    if (match.index > cursor) parts.push({ kind: "text", content: value.slice(cursor, match.index) });
+    const src = match[2];
+    if (src.length <= 7_100_000) {
+      parts.push({ kind: "image", src, alt: match[1].trim() || "生成的图片" });
+    } else {
+      parts.push({ kind: "text", content: hiddenImage });
+    }
+    cursor = inlineImagePattern.lastIndex;
+  }
+  if (cursor < value.length) parts.push({ kind: "text", content: value.slice(cursor) });
+  return parts.length ? parts : [{ kind: "text", content: value }];
 }
 
 function InlineText({ children }: { children: string }) {
@@ -27,10 +55,8 @@ function InlineText({ children }: { children: string }) {
   return nodes.length ? nodes : children;
 }
 
-export function HoneyMessage({ content, plain = false }: { content: string; plain?: boolean }) {
+function RichText({ content }: { content: string }) {
   const safe = safeDisplayText(content).replaceAll("\r\n", "\n");
-  if (plain) return <p className="whitespace-pre-wrap break-words">{safe}</p>;
-
   const lines = safe.split("\n");
   const blocks: ReactNode[] = [];
   for (let index = 0; index < lines.length;) {
@@ -87,4 +113,50 @@ export function HoneyMessage({ content, plain = false }: { content: string; plai
     blocks.push(<p key={`p-${index}`}><InlineText>{paragraph.join(" ")}</InlineText></p>);
   }
   return <div className="honey-rich-text">{blocks}</div>;
+}
+
+function MessageImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <figure className="honey-message-image">
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-[32rem] w-auto max-w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-raised)] object-contain"
+        loading="lazy"
+        decoding="async"
+      />
+    </figure>
+  );
+}
+
+export function HoneyMessage({
+  content,
+  plain = false,
+  role = "assistant",
+  messageId,
+  isStreaming = false,
+}: {
+  content: string;
+  plain?: boolean;
+  role?: "user" | "assistant" | "system";
+  messageId?: string;
+  isStreaming?: boolean;
+}) {
+  if (plain) {
+    return (
+      <HoneyOSMessageFrame role={role} messageId={messageId} isStreaming={isStreaming}>
+        <p className="whitespace-pre-wrap break-words">{safeDisplayText(content)}</p>
+      </HoneyOSMessageFrame>
+    );
+  }
+  const parts = extractMessageParts(content);
+  return (
+    <HoneyOSMessageFrame role={role} messageId={messageId} isStreaming={isStreaming}>
+      <div className="honey-message-content">
+        {parts.map((part, index) => part.kind === "image"
+          ? <MessageImage key={`image-${index}`} src={part.src} alt={part.alt} />
+          : part.content.trim() ? <RichText key={`text-${index}`} content={part.content} /> : null)}
+      </div>
+    </HoneyOSMessageFrame>
+  );
 }

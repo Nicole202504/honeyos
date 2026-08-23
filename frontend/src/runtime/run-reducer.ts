@@ -38,6 +38,7 @@ function normalizeActivity(value: unknown): HoneyActivity | null {
   return {
     activity_id: String(activity.activity_id || "activity"),
     kind: String(activity.kind || "handling"),
+    ...(activity.tool_key ? { tool_key: String(activity.tool_key) } : {}),
     state: String(activity.state || "active"),
     title: String(activity.title || "正在处理"),
     detail: String(activity.detail || ""),
@@ -52,6 +53,23 @@ function upsertTool(parts: RunPart[], activity: HoneyActivity): RunPart[] {
   return parts.map((part, partIndex) =>
     partIndex === index && part.kind === "tool" ? { ...part, activity } : part,
   );
+}
+
+function reconcileCompletedMedia(parts: RunPart[], content: string): RunPart[] {
+  if (!/!\[[^\]]*\]\(data:image\//i.test(content)) return parts;
+  let lastTextIndex = -1;
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (parts[index].kind === "text") {
+      lastTextIndex = index;
+      break;
+    }
+  }
+  if (lastTextIndex < 0) {
+    return [...parts, { id: `text-${parts.length + 1}`, kind: "text", content, status: "completed" }];
+  }
+  return parts.map((part, index) => index === lastTextIndex && part.kind === "text"
+    ? { ...part, content, status: "completed" }
+    : part);
 }
 
 function normalizePermission(payload: Record<string, unknown>): HoneyPermission {
@@ -119,11 +137,13 @@ export function reduceHoneyRun(state: HoneyRunState, event: HoneyEvent): HoneyRu
     };
   }
   if (name === "assistant.completed") {
-    const content = state.content || String(payload.content || "");
+    const completedContent = String(payload.content || "");
+    const content = state.content || completedContent;
     let parts = finishText(state.parts);
     if (content && !parts.some((part) => part.kind === "text")) {
       parts = finishText(appendText(parts, content));
     }
+    if (completedContent) parts = reconcileCompletedMedia(parts, completedContent);
     return { ...state, phase: "completed", content, presence: null, parts };
   }
   if (name === "error") {

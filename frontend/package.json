@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "honeyos:ui:list": "node scripts/honeyos-custom-ui.mjs list",
+    "honeyos:ui:restore": "node scripts/honeyos-custom-ui.mjs restore",
+    "honeyos:ui:snapshot": "node scripts/honeyos-custom-ui.mjs snapshot",
+    "honeyos:ui:status": "node scripts/honeyos-custom-ui.mjs status",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest"

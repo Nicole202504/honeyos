@@ -4,13 +4,13 @@
 
 ## 什么时候使用 Builder
 
-只有用户明确要求修改 HoneyOS 产品本身时才召回内置 `honeyos-builder` Skill，例如修改聊天页面、伴侣活动文案、普通内置伴侣 Skill，或在稳定扩展目录中增加功能。聊天页面的静态资源使用即时覆盖层；其余产品代码才进入候选换版流程。
+只有用户明确要求修改 HoneyOS 产品本身时才召回内置 `honeyos-builder` Skill，例如修改聊天页面、伴侣活动文案、普通内置伴侣 Skill，或在稳定扩展目录中增加功能。React 聊天页面使用构建覆盖层；其余产品代码才进入候选换版流程。
 
 ## 网页即时覆盖层
 
-`honeyos/companion/web_assets/**` 不再为了样式和交互调整创建完整候选版本。用户可编辑文件位于 `~/HoneyOS Projects/HoneyOS UI/web_assets/`（若配置了 `HONEYOS_PROJECTS_HOME`，则位于该目录下）。网关每次响应静态资源时优先读取这里存在的同名文件，不存在则回退到安装包内置文件。
+前端个性化不再修改已删除的原生页面。用户可编辑源码位于 `~/HoneyOS Projects/HoneyOS UI/frontend/`，支持边界是 `src/custom/` 与主题变量；构建产物位于 `~/HoneyOS Projects/HoneyOS UI/react_dist/`。网关优先读取完整、可用的本机构建，不存在时回退到安装包内置 React 构建。
 
-因此网页修改的流程是：复制待改文件到覆盖层、备份已有覆盖、修改并静态检查、刷新浏览器。它不会切换运行槽，不会执行健康检查，也不会重启聊天服务。删除覆盖文件即可恢复内置版本。
+因此网页修改的流程是：准备前端源码、保存自定义层快照、修改、测试并构建、刷新浏览器。它不会切换运行槽，不会执行网关健康检查，也不会重启聊天服务。使用安全模式或移走本地构建即可恢复内置版本。
 
 下列请求不进入 Builder：
 
@@ -70,7 +70,7 @@ honeyos/companion/companion_skills/**
 
 ```bash
 honeyos builder prepare --source <源码目录> --goal <目标> \
-  --allow 'honeyos/companion/web_assets/**' --change-id <短ID>
+  --allow 'honeyos/companion/extensions/**' --change-id <短ID>
 honeyos builder inspect <短ID>
 honeyos builder status
 honeyos builder activate <短ID>

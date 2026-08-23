@@ -70,11 +70,13 @@ _TOOL_ACTIVE_COPY = {
     "web_search": ("正在找相关内容", "我先替你找找看"),
     "web_fetch": ("正在看相关内容", "我打开仔细看看"),
     "browser_navigate": ("正在打开页面", "我进去看看里面有什么"),
+    "browser_search": ("正在用浏览器查找", "我在页面里找相关内容"),
     "skills_list": ("正在看看现有能力", "我先翻一遍已经会的"),
     "skill_view": ("正在看使用说明", "我先弄清楚怎么用"),
     "write_file": ("正在把文件写好", "我在把内容落下来"),
     "edit_file": ("正在调整内容", "我在把细节改好"),
     "patch": ("正在调整内容", "我在把细节改好"),
+    "image_generate": ("正在为你生成图片", "图片做好后会直接出现在对话里"),
     "read_file": ("正在看这个文件", "我先把内容看清楚"),
     "terminal": ("正在执行这一步", "我在替你把它跑完"),
     "bash": ("正在执行这一步", "我在替你把它跑完"),
@@ -87,11 +89,13 @@ _TOOL_COMPLETED_COPY = {
     "web_search": "已经找到相关内容了",
     "web_fetch": "已经看过相关内容了",
     "browser_navigate": "这个页面已经看过了",
+    "browser_search": "已经用浏览器找过了",
     "skills_list": "已经看过现有能力了",
     "skill_view": "已经读完使用说明了",
     "write_file": "文件已经替你写好了",
     "edit_file": "内容已经替你改好了",
     "patch": "内容已经替你改好了",
+    "image_generate": "图片已经生成好了",
     "read_file": "这个文件已经看过了",
     "terminal": "这一步已经执行完了",
     "bash": "这一步已经执行完了",
@@ -123,12 +127,29 @@ _TOOL_ACTION_COPY = {
     ),
 }
 
+_PUBLIC_TOOL_KEYS = frozenset({
+    name
+    for names in _TOOL_KINDS.values()
+    for name in names
+}) | frozenset({
+    "browser_search",
+    "execute_code",
+    "skill_view",
+})
+
 
 def _normalized_tool_name(tool_name: str | None) -> str:
     value = str(tool_name or "").strip().lower().replace("-", "_")
     if value.startswith("mcp__"):
         return "mcp"
     return value.rsplit(".", 1)[-1]
+
+
+def _public_tool_key(tool_name: str | None) -> str:
+    """Return a bounded renderer key without exposing arbitrary tool names."""
+
+    normalized = _normalized_tool_name(tool_name)
+    return normalized if normalized in _PUBLIC_TOOL_KEYS else "tool"
 
 
 def activity_kind(tool_name: str | None) -> str:
@@ -190,6 +211,7 @@ def project_activity(
         return {
             "activity_id": str(activity_id or "activity"),
             "kind": kind,
+            "tool_key": _public_tool_key(tool_name),
             "state": "completed",
             "title": completed_copy,
             "detail": "",
@@ -198,6 +220,7 @@ def project_activity(
         return {
             "activity_id": str(activity_id or "activity"),
             "kind": kind,
+            "tool_key": _public_tool_key(tool_name),
             "state": "failed",
             "title": "刚才没走通，我换个办法",
             "detail": "",
@@ -206,6 +229,7 @@ def project_activity(
     return {
         "activity_id": str(activity_id or "activity"),
         "kind": kind,
+        "tool_key": _public_tool_key(tool_name),
         "state": "active",
         "title": title,
         "detail": detail,

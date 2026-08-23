@@ -70,6 +70,7 @@ class DistillationResult:
     applied: int = 0
     rejected: int = 0
     error: str = ""
+    chapter_id: str = ""
 
 
 def load_distillation_settings(home: Path) -> DistillationSettings:
@@ -240,7 +241,11 @@ async def extract_with_auxiliary_model(
         local_now = job.now
     system_prompt = f"""You distill HoneyOS companion conversations into strict JSON.
 Current local time: {local_now.isoformat()}
-Return one object with an operations array, maximum {job.max_operations} operations.
+Return one object with a required chapter object and an operations array,
+maximum {job.max_operations} operations. The chapter is a concise recap for the
+user's Recent page. It must contain a short title, a factual 2-4 sentence summary
+of what was actually discussed, and evidence_message_ids. Do not infer identity,
+personality, relationship status, or feelings that were not explicitly stated.
 Allowed kinds: open_loop, temporary_state, commitment, episode.
 Allowed actions: record, resolve, update. Never output forget.
 Every operation must cite one or more evidence_message_ids from the supplied transcript.
@@ -251,7 +256,8 @@ For temporary states, infer expires_at from explicit time semantics: today, this
 a named date, or an event deadline. Use an ISO-8601 timestamp. Omit expires_at only
 when the user supplied no time clue; the code then applies a conservative fallback.
 Resolve or update only IDs present in active_memories. Usually output 0-3 operations.
-Do not include prose or markdown."""
+Write the chapter and each operation in the dominant language of the transcript
+(use Chinese for a mainly Chinese conversation). Do not include prose or markdown."""
     response = await async_call_llm(
         task="memory_distillation",
         messages=[
@@ -323,6 +329,19 @@ class MemoryDistiller:
             );
             """
         )
+        existing_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(distillation_runs)")
+        }
+        migrations = {
+            "applied_count": "INTEGER NOT NULL DEFAULT 0",
+            "rejected_count": "INTEGER NOT NULL DEFAULT 0",
+            "chapter_id": "TEXT NOT NULL DEFAULT ''",
+        }
+        for column, declaration in migrations.items():
+            if column not in existing_columns:
+                connection.execute(
+                    f"ALTER TABLE distillation_runs ADD COLUMN {column} {declaration}"
+                )
         try:
             os.chmod(self.db_path, 0o600)
         except OSError:
@@ -475,6 +494,75 @@ class MemoryDistiller:
             raise ValueError("distillation response did not contain operations")
         return tuple(operation for operation in operations[:maximum] if isinstance(operation, dict))
 
+    @staticmethod
+    def _parse_chapter(raw: str) -> dict[str, Any]:
+        cleaned = str(raw or "").strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[-1]
+            cleaned = cleaned.rsplit("```", 1)[0].strip()
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start < 0 or end < start:
+            return {}
+        payload = json.loads(cleaned[start : end + 1])
+        chapter = payload.get("chapter") if isinstance(payload, dict) else None
+        return chapter if isinstance(chapter, dict) else {}
+
+    @staticmethod
+    def _fallback_chapter(job: DistillationJob) -> dict[str, Any]:
+        user_messages = [message for message in job.messages if message["role"] == "user"]
+        assistant_messages = [
+            message for message in job.messages if message["role"] == "assistant"
+        ]
+        first = user_messages[0] if user_messages else job.messages[0]
+        last = assistant_messages[-1] if assistant_messages else job.messages[-1]
+
+        def snippet(value: str, maximum: int) -> str:
+            cleaned = " ".join(value.split())
+            return cleaned if len(cleaned) <= maximum else cleaned[: maximum - 1] + "…"
+
+        topic = snippet(first["content"], 36)
+        return {
+            "title": f"聊到：{topic}",
+            "summary": (
+                f"你提到“{snippet(first['content'], 180)}”；"
+                f"它回应“{snippet(last['content'], 180)}”。"
+            ),
+            "evidence_message_ids": [message["_row_id"] for message in job.messages],
+        }
+
+    def _record_chapter(self, job: DistillationJob, raw: str):
+        proposed = self._parse_chapter(raw)
+        valid_source_ids = {message["_row_id"] for message in job.messages}
+        try:
+            evidence_ids = tuple(
+                dict.fromkeys(
+                    int(value) for value in proposed.get("evidence_message_ids", ())
+                )
+            )
+        except (TypeError, ValueError):
+            evidence_ids = ()
+        title = str(proposed.get("title") or "").strip()
+        summary = str(proposed.get("summary") or "").strip()
+        if (
+            not title
+            or not summary
+            or not evidence_ids
+            or not set(evidence_ids).issubset(valid_source_ids)
+        ):
+            proposed = self._fallback_chapter(job)
+            title = proposed["title"]
+            summary = proposed["summary"]
+            evidence_ids = tuple(proposed["evidence_message_ids"])
+        return self.memories.record_chapter(
+            lane_key=job.lane_key,
+            title=title,
+            summary=summary,
+            source_session_id=job.session_id,
+            source_message_ids=evidence_ids,
+            source_hash=job.source_hash,
+            now=job.now,
+        )
+
     def _apply_operations(
         self, job: DistillationJob, operations: tuple[dict[str, Any], ...]
     ) -> tuple[int, int]:
@@ -595,6 +683,19 @@ class MemoryDistiller:
             active_items = self.memories.list_active(lane_key=lane_key, now=timestamp)
             raw = await self.extractor(job, active_items, dict(main_runtime or {}))
             operations = self._parse_operations(raw, self.settings.max_operations)
+            chapter = self._record_chapter(job, raw)
+            if chapter is None:
+                error = "recent conversation summary could not be persisted"
+                with self._connect() as connection:
+                    connection.execute(
+                        "UPDATE distillation_runs SET status = 'failed', error = ? WHERE id = ?",
+                        (error, job.run_id),
+                    )
+                return DistillationResult(
+                    run_id=job.run_id,
+                    status="failed",
+                    error=error,
+                )
             applied, rejected = self._apply_operations(job, operations)
             if operations and applied == 0 and rejected:
                 error = "validation rejected every proposed memory operation"
@@ -628,16 +729,24 @@ class MemoryDistiller:
                 connection.execute(
                     """
                     UPDATE distillation_runs
-                    SET status = 'completed', completed_at = ?, error = ''
+                    SET status = 'completed', completed_at = ?, error = '',
+                        applied_count = ?, rejected_count = ?, chapter_id = ?
                     WHERE id = ?
                     """,
-                    (timestamp.isoformat(), job.run_id),
+                    (
+                        timestamp.isoformat(),
+                        applied,
+                        rejected,
+                        chapter.id,
+                        job.run_id,
+                    ),
                 )
             return DistillationResult(
                 run_id=job.run_id,
                 status="completed",
                 applied=applied,
                 rejected=rejected,
+                chapter_id=chapter.id,
             )
         except asyncio.CancelledError:
             try:
@@ -746,11 +855,102 @@ def repair_legacy_completed_rejections(home: Path) -> int:
         return 0
 
 
+def repair_legacy_missing_recent_chapters(home: Path) -> int:
+    """Replay the latest legacy batch once so upgraded users get a Recent card."""
+
+    db_path = Path(home).expanduser().resolve() / "continuity.db"
+    if not db_path.exists():
+        return 0
+    marker = "recent-conversation-chapters-v1"
+    try:
+        # This also creates the chapter table for databases from older releases.
+        StructuredMemoryStore(home).list_chapters(lane_key="__migration_probe__", limit=1)
+        with sqlite3.connect(db_path, timeout=1.0) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS distillation_repairs (
+                    repair_key TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                )
+                """
+            )
+            if connection.execute(
+                "SELECT 1 FROM distillation_repairs WHERE repair_key = ?", (marker,)
+            ).fetchone():
+                return 0
+            chapter_count = int(
+                connection.execute("SELECT COUNT(*) FROM conversation_chapters").fetchone()[0]
+            )
+            legacy_run = connection.execute(
+                """
+                SELECT id, lane_key, session_id, source_start_id
+                FROM distillation_runs
+                WHERE status = 'completed'
+                ORDER BY COALESCE(completed_at, created_at) DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if chapter_count or legacy_run is None:
+                return 0
+            run_id, lane_key, session_id, source_start_id = legacy_run
+            connection.execute(
+                """
+                UPDATE distillation_runs
+                SET status = 'failed', attempts = 0,
+                    error = 'recent chapter upgrade replay', completed_at = NULL
+                WHERE id = ?
+                """,
+                (run_id,),
+            )
+            connection.execute(
+                """
+                INSERT INTO distillation_state (
+                    lane_key, session_id, last_source_row_id, updated_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(lane_key, session_id) DO UPDATE SET
+                    last_source_row_id = excluded.last_source_row_id,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    lane_key,
+                    session_id,
+                    max(0, int(source_start_id) - 1),
+                    _utc_now().isoformat(),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO distillation_repairs(repair_key, applied_at) VALUES (?, ?)",
+                (marker, _utc_now().isoformat()),
+            )
+            return 1
+    except (sqlite3.Error, OSError, TypeError, ValueError):
+        return 0
+
+
 def active_honeyos_distiller() -> MemoryDistiller | None:
     """Return the active local distiller, fail-closed outside HoneyOS."""
 
     runtime_id = os.environ.get("HONEYOS_RUNTIME_ID", "")
     raw_home = os.environ.get("HONEYOS_HOME", "").strip()
-    if not runtime_id.startswith("honeyos-companion-") or not raw_home:
+    if not raw_home:
         return None
-    return MemoryDistiller(Path(raw_home))
+    home = Path(raw_home).expanduser().resolve()
+    if runtime_id.startswith("honeyos-companion-"):
+        repair_legacy_missing_recent_chapters(home)
+        return MemoryDistiller(home)
+
+    # launchd plists created by a few early HoneyOS builds omitted the runtime
+    # marker.  Requiring only that environment variable disables the whole
+    # memory pipeline after an otherwise successful restart.  Recover only
+    # when the persisted, user-owned runtime identity proves this is the exact
+    # initialized HoneyOS home; arbitrary directories still fail closed.
+    try:
+        identity = json.loads((home / "runtime.json").read_text(encoding="utf-8"))
+        identity_home = Path(str(identity.get("data_directory") or "")).expanduser().resolve()
+        is_honeyos_home = bool(identity.get("honeyos_version")) and identity_home == home
+    except (OSError, ValueError, TypeError):
+        is_honeyos_home = False
+    if is_honeyos_home:
+        repair_legacy_missing_recent_chapters(home)
+        return MemoryDistiller(home)
+    return None

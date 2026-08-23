@@ -33,4 +33,13 @@ describe("reduceHoneyRun", () => {
     expect(state.parts.map((part) => part.kind)).toEqual(["text", "approval", "text"]);
     expect(state.parts[1]).toMatchObject({ status: "completed", choice: "once" });
   });
+
+  it("reconciles a completed generated image into the last text position", () => {
+    let state = reduceHoneyRun(initialRunState, { name: "run.started", payload: { run_id: "run-image" } });
+    state = reduceHoneyRun(state, { name: "assistant.delta", payload: { delta: "给你。MEDIA:/tmp/cat.png" } });
+    state = reduceHoneyRun(state, { name: "assistant.completed", payload: { content: "给你。![小猫](data:image/png;base64,aaaa)" } });
+
+    expect(state.parts).toHaveLength(1);
+    expect(state.parts[0]).toMatchObject({ kind: "text", content: "给你。![小猫](data:image/png;base64,aaaa)", status: "completed" });
+  });
 });

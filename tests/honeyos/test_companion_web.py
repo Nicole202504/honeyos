@@ -6,6 +6,7 @@ from threading import Thread
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import asyncio
 import json
 
 import pytest
@@ -33,6 +34,23 @@ from honeyos.gateway.platforms.api_server import (
     _security_headers_for_path,
 )
 from honeyos.gateway.session import SessionSource, build_session_key
+
+
+def test_companion_multimodal_message_is_visible_and_displayable():
+    content = [
+        {"type": "text", "text": "看看这张图"},
+        {
+            "type": "image_url",
+            "image_url": {"url": "data:image/jpeg;base64,YWJj"},
+        },
+    ]
+
+    assert APIServerAdapter._is_companion_visible_message(
+        {"role": "user", "content": content}
+    )
+    assert APIServerAdapter._companion_display_content(content) == (
+        "看看这张图\n\n![用户上传的图片](data:image/jpeg;base64,YWJj)"
+    )
 
 
 def _dm(platform: Platform, chat_id: str) -> SessionSource:
@@ -75,11 +93,11 @@ def test_activity_projection_hides_raw_tool_details():
     assert activity == {
         "activity_id": "activity",
         "kind": "checking",
+        "tool_key": "web_search",
         "state": "active",
         "title": "正在找相关内容",
         "detail": "我先替你找找看",
     }
-    assert "web_search" not in str(activity)
     assert "secret" not in str(activity)
 
 
@@ -109,11 +127,12 @@ def test_activity_projection_keeps_only_opaque_identifier():
     assert set(activity) == {
         "activity_id",
         "kind",
+        "tool_key",
         "state",
         "title",
         "detail",
     }
-    assert "web_search" not in str(activity)
+    assert activity["tool_key"] == "web_search"
     assert "secret" not in str(activity)
 
 
@@ -124,6 +143,7 @@ def test_activity_projection_collapses_success_and_softens_failure():
     assert completed == {
         "activity_id": "activity",
         "kind": "checking",
+        "tool_key": "web_fetch",
         "state": "completed",
         "title": "已经看过相关内容了",
         "detail": "",
@@ -131,6 +151,7 @@ def test_activity_projection_collapses_success_and_softens_failure():
     assert failed == {
         "activity_id": "activity",
         "kind": "handling",
+        "tool_key": "terminal",
         "state": "failed",
         "title": "刚才没走通，我换个办法",
         "detail": "",
@@ -151,6 +172,7 @@ def test_companion_tool_error_is_projected_as_failed_event():
     assert payload["activity"] == {
         "activity_id": "activity-1",
         "kind": "reading",
+        "tool_key": "read_file",
         "state": "failed",
         "title": "刚才没走通，我换个办法",
         "detail": "",
@@ -337,47 +359,6 @@ def test_cli_exposes_web_as_a_public_command():
     assert args.command == "web"
 
 
-def test_web_assets_are_packaged():
-    assets = Path(__file__).parents[2] / "honeyos" / "companion" / "web_assets"
-
-    assert (assets / "index.html").is_file()
-    assert (assets / "app.js").is_file()
-    assert (assets / "message-format.js").is_file()
-    assert (assets / "run-state.js").is_file()
-    assert (assets / "styles.css").is_file()
-    assert (assets / "icons.svg").is_file()
-    file_guard = assets / "file-open.js"
-    assert file_guard.is_file()
-    assert "window.location.replace" in file_guard.read_text(encoding="utf-8")
-
-
-def test_companion_assets_define_relationship_native_run_ui():
-    assets = Path(__file__).parents[2] / "honeyos" / "companion" / "web_assets"
-    index = (assets / "index.html").read_text(encoding="utf-8")
-    app = (assets / "app.js").read_text(encoding="utf-8")
-
-    assert 'src="./run-state.js?' in index
-    assert 'src="./message-format.js?' in index
-    assert 'id="presence-line"' in index
-    assert 'id="action-trail"' in index
-    assert 'id="scroll-to-latest"' in index
-    assert 'class="message-avatar status-avatar"' in index
-    assert 'message-avatar' in app
-    assert 'state.activities.length' in app
-    assert 'wrapper.className = "activity-card"' in app
-    assert 'details.className = "activity-steps"' in app
-    assert 'HoneyOSRunState.summarize' in app
-    assert "setSendState(true)" in app
-    assert "activityTimer" not in app
-    assert 'id="permission-card"' in index
-    assert "renderPermission" in app
-    assert "看看具体会做什么" in app
-    assert "ACTIVITY_DELAY_MS" not in app
-    assert "payload.preview" not in app
-    assert "payload.args" not in app
-    assert "payload.tool_name" not in app
-
-
 def test_companion_approval_event_contains_safe_copy_and_not_raw_description():
     payload = _companion_approval_event_payload(
         {
@@ -392,39 +373,6 @@ def test_companion_approval_event_contains_safe_copy_and_not_raw_description():
     assert "电脑" in payload["narration"] and "下面" in payload["narration"]
     assert payload["choices"] == ["once", "session", "deny"]
     assert "execute_code can spawn subprocesses" not in str(payload)
-
-
-def test_companion_styles_are_full_window_and_accessible():
-    css = (
-        Path(__file__).parents[2]
-        / "honeyos"
-        / "companion"
-        / "web_assets"
-        / "styles.css"
-    ).read_text(encoding="utf-8")
-
-    assert ".companion-app" in css
-    assert ".presence-line" in css
-    assert ".action-trail" in css
-    assert ".message-avatar" in css
-    assert ".turn-status-row" in css
-    assert "prefers-color-scheme: dark" in css
-    assert "prefers-reduced-motion: reduce" in css
-    assert "width: min(100%, 460px)" not in css
-    assert "linear-gradient(145deg, var(--ambient-a), var(--ambient-b))" not in css
-
-
-def test_file_mode_and_provider_recovery_have_human_copy():
-    assets = Path(__file__).parents[2] / "honeyos" / "companion" / "web_assets"
-    index = (assets / "index.html").read_text(encoding="utf-8")
-    app = (assets / "app.js").read_text(encoding="utf-8")
-    file_guard = (assets / "file-open.js").read_text(encoding="utf-8")
-
-    assert 'id="file-mode-notice"' in index
-    assert "打开 HoneyOS" in index
-    assert "honeyos setup" in app
-    assert "No LLM provider configured" not in index
-    assert "file-mode-notice" in file_guard
 
 
 def test_session_model_refresh_keeps_named_custom_provider_identity():
@@ -517,7 +465,9 @@ def test_companion_stream_payloads_never_include_raw_tool_or_reasoning_data():
     )
 
     assert set(tool_payload) == {"message_id", "activity"}
-    assert "terminal" not in str(tool_payload)
+    assert tool_payload["activity"]["tool_key"] == "terminal"
+    assert "private.example" not in str(tool_payload)
+    assert "secret" not in str(tool_payload)
     assert "private" not in str(tool_payload)
     assert completed_payload == {
         "session_id": "session-1",
@@ -548,19 +498,16 @@ def test_api_server_registers_companion_web_routes():
     assert ("GET", "/new-ui") in routes
     assert ("GET", "/new-ui/") in routes
     assert ("GET", "/new-ui/{asset_path:.*}") in routes
-    assert ("GET", "/file-open.js") in routes
-    assert ("GET", "/message-format.js") in routes
-    assert ("GET", "/run-state.js") in routes
-    assert ("GET", "/app.js") in routes
-    assert ("GET", "/styles.css") in routes
-    assert ("GET", "/icons.svg") in routes
-    assert ("GET", "/honeyos/run-state.js") in routes
-    assert ("GET", "/honeyos/message-format.js") in routes
-    assert ("GET", "/honeyos/app.js") in routes
-    assert ("GET", "/honeyos/styles.css") in routes
-    assert ("GET", "/honeyos/icons.svg") in routes
+    assert ("GET", "/memories") in routes
+    assert ("GET", "/relationship") in routes
+    assert ("GET", "/settings") in routes
+    assert ("GET", "/{asset_path:assets/.*}") in routes
     assert ("GET", "/api/companion/bootstrap") in routes
     assert ("GET", "/api/companion/settings") in routes
+    assert ("GET", "/api/companion/avatar") in routes
+    assert ("GET", "/api/companion/avatar/status") in routes
+    assert ("POST", "/api/companion/avatar") in routes
+    assert ("DELETE", "/api/companion/avatar") in routes
     assert ("GET", "/api/companion/mcp/servers") in routes
     assert ("POST", "/api/companion/mcp/servers/{name}/auth") in routes
     assert ("GET", "/api/companion/mcp/oauth/flows/{flow_id}") in routes
@@ -581,6 +528,31 @@ def test_api_server_registers_companion_web_routes():
         "POST",
         "/api/companion/proactive/{delivery_id}/complete",
     ) in routes
+
+
+@pytest.mark.asyncio
+async def test_companion_avatar_can_be_updated_read_and_removed(tmp_path):
+    adapter = _api_adapter()
+    avatar_path = tmp_path / "companion-avatar"
+    adapter._check_auth = MagicMock(return_value=None)
+    adapter._companion_avatar_file = MagicMock(return_value=avatar_path)
+    adapter._read_json_body = AsyncMock(
+        return_value=({"data_url": "data:image/png;base64,iVBORw0KGgo="}, None)
+    )
+    request = SimpleNamespace()
+
+    updated = await adapter._handle_companion_avatar_update(request)
+    assert updated.status == 200
+    assert avatar_path.read_bytes().startswith(b"\x89PNG")
+
+    fetched = await adapter._handle_companion_avatar(request)
+    assert fetched.status == 200
+    assert fetched.content_type == "image/png"
+    assert fetched.headers["Cache-Control"] == "private, max-age=31536000, immutable"
+
+    removed = await adapter._handle_companion_avatar_delete(request)
+    assert removed.status == 200
+    assert not avatar_path.exists()
 
 
 @pytest.mark.asyncio
@@ -840,14 +812,14 @@ def test_companion_page_csp_allows_only_its_own_assets_and_stream():
 
 
 @pytest.mark.asyncio
-async def test_companion_index_establishes_an_http_only_local_session():
+async def test_companion_root_serves_react_and_establishes_local_session():
     adapter = _api_adapter()
-    request = SimpleNamespace(remote="127.0.0.1")
+    request = SimpleNamespace(remote="127.0.0.1", match_info={})
 
-    response = await adapter._handle_companion_index(request)
+    response = await adapter._handle_companion_react(request)
 
     assert response.status == 200
-    assert b"HoneyOS" in response.body
+    assert b'<div id="root"></div>' in response.body
     cookie = response.cookies["honeyos_local"]
     assert cookie["httponly"] is True
     assert cookie["samesite"] == "Strict"
@@ -1363,7 +1335,7 @@ async def test_companion_session_chat_schedules_background_memory_distillation()
         _schedule_honeyos_memory_distillation=scheduler
     )
     adapter._parse_session_key_header = MagicMock(
-        return_value=("agent:main:companion:dm:owner", None)
+        return_value=("agent:main:api_server:dm:local-owner", None)
     )
     adapter._get_existing_session_or_404 = AsyncMock(
         return_value=({"id": "shared-session", "model": "deepseek-v4-flash"}, None)
@@ -1401,11 +1373,13 @@ async def test_companion_session_chat_schedules_background_memory_distillation()
     )
 
     response = await adapter._handle_session_chat.__wrapped__(adapter, request)
+    scheduler.assert_not_called()
+    await asyncio.sleep(0)
 
     assert response.status == 200
     scheduler.assert_called_once()
     call = scheduler.call_args.kwargs
-    assert call["lane_key"] == "agent:main:companion:dm:owner"
+    assert call["lane_key"] == "agent:main:api_server:dm:local-owner"
     assert call["session_id"] == "shared-session"
     assert call["reason"] == "periodic"
     assert call["main_runtime"]["api_mode"] == "chat_completions"
@@ -1416,12 +1390,15 @@ async def test_companion_stream_chat_schedules_background_memory_distillation(
     monkeypatch,
 ):
     adapter = _api_adapter()
-    scheduler = MagicMock(return_value=True)
+    delivery_order = []
+    scheduler = MagicMock(
+        side_effect=lambda **_kwargs: delivery_order.append("memory") or True
+    )
     adapter.gateway_runner = SimpleNamespace(
         _schedule_honeyos_memory_distillation=scheduler
     )
     adapter._parse_session_key_header = MagicMock(
-        return_value=("agent:main:companion:dm:owner", None)
+        return_value=("agent:main:api_server:dm:local-owner", None)
     )
     adapter._get_existing_session_or_404 = AsyncMock(
         return_value=({"id": "shared-session", "model": "deepseek-v4-flash"}, None)
@@ -1466,6 +1443,8 @@ async def test_companion_stream_chat_schedules_background_memory_distillation(
 
         async def write(self, frame):
             self.frames.append(frame)
+            if b"event: run.completed" in frame:
+                delivery_order.append("reply_completed")
 
     monkeypatch.setattr(
         "honeyos.gateway.platforms.api_server.web.StreamResponse",
@@ -1485,4 +1464,5 @@ async def test_companion_stream_chat_schedules_background_memory_distillation(
 
     assert response.status == 200
     scheduler.assert_called_once()
+    assert delivery_order == ["reply_completed", "memory"]
     assert scheduler.call_args.kwargs["session_id"] == "shared-session"

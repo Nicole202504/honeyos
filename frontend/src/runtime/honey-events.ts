@@ -1,6 +1,7 @@
 export type HoneyActivity = {
   activity_id: string;
   kind: string;
+  tool_key?: string;
   state: string;
   title: string;
   detail: string;
