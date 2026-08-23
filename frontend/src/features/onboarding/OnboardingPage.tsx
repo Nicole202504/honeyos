@@ -8,6 +8,7 @@ import {
   discoverCompanionModels,
   fetchCompanionSettings,
   saveCompanionModel,
+  waitForCompanionReady,
 } from "../../api/companion";
 import { apiPath } from "../../api/client";
 import { ChannelLinkPanel } from "../../components/honey/ChannelLinkPanel";
@@ -20,11 +21,19 @@ const providers = [
   { value: "custom", label: "其他兼容接口", baseUrl: "" },
 ];
 
+type OnboardingStage = "model" | "channels" | "ready";
+
+function requestedPreviewStage(): OnboardingStage | null {
+  const value = new URLSearchParams(window.location.search).get("preview");
+  return value === "model" || value === "channels" || value === "ready" ? value : null;
+}
+
 export function OnboardingPage() {
+  const previewStage = requestedPreviewStage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ["companion-settings"], queryFn: fetchCompanionSettings });
-  const [stage, setStage] = useState<"model" | "channels" | "ready">("model");
+  const [stage, setStage] = useState<OnboardingStage>(previewStage || "model");
   const [provider, setProvider] = useState("openai-api");
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
   const [apiKey, setApiKey] = useState("");
@@ -36,13 +45,14 @@ export function OnboardingPage() {
   const [finishError, setFinishError] = useState("");
 
   useEffect(() => {
+    if (previewStage) return;
     const current = settings.data?.settings.model;
     if (!current) return;
     if (current.provider) setProvider(current.provider);
     if (current.base_url) setBaseUrl(current.base_url);
     if (current.model) setModel(current.model);
     if (current.model && current.api_key_configured) setStage("channels");
-  }, [settings.data]);
+  }, [previewStage, settings.data]);
 
   const discover = useMutation({
     mutationFn: discoverCompanionModels,
@@ -73,12 +83,22 @@ export function OnboardingPage() {
   }
 
   function connect() {
+    if (previewStage) {
+      setModels(["openai/gpt-5", "deepseek/deepseek-chat"]);
+      setModel("openai/gpt-5");
+      setStatus("预览模式：已经找到 2 个示例模型");
+      return;
+    }
     setStatus("正在连接模型服务");
     discover.mutate({ provider, base_url: baseUrl, api_key: apiKey });
   }
 
   function submitModel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (previewStage) {
+      setStage("channels");
+      return;
+    }
     if (!apiKey && !settings.data?.settings.model.api_key_configured) {
       setStatus("请先填写 API Key");
       return;
@@ -94,6 +114,10 @@ export function OnboardingPage() {
   const activeIndex = stage === "model" ? 0 : stage === "channels" ? 1 : 2;
 
   async function startChat() {
+    if (previewStage) {
+      navigate("/", { replace: true });
+      return;
+    }
     if (!connected.size) {
       navigate("/", { replace: true });
       return;
@@ -102,20 +126,9 @@ export function OnboardingPage() {
     setFinishError("");
     try {
       await restartCompanion();
-      await new Promise((resolve) => window.setTimeout(resolve, 2500));
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        try {
-          const response = await fetch(apiPath("/health"), { cache: "no-store" });
-          if (response.ok) {
-            window.location.assign(apiPath("/"));
-            return;
-          }
-        } catch {
-          // Expected while the local background service is restarting.
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
-      throw new Error("HoneyOS 重启时间比预期更久，请刷新页面重试");
+      const ready = await waitForCompanionReady({ attempts: 60 });
+      if (!ready) throw new Error("HoneyOS 重启时间比预期更久，请刷新页面重试");
+      window.location.assign(apiPath("/"));
     } catch (error) {
       setFinishError(error instanceof Error ? error.message : "暂时无法完成设置");
       setFinishing(false);
@@ -137,7 +150,7 @@ export function OnboardingPage() {
           <section className="py-12 sm:py-16">
             <h1 className="max-w-xl text-3xl font-semibold tracking-[-0.035em] sm:text-5xl">先让它能够回应你</h1>
             <p className="mt-4 max-w-xl text-sm leading-6 text-[var(--foreground-muted)] sm:text-base">选择模型服务并填写 API Key。密钥不会显示，也不会离开这台电脑。</p>
-            <form onSubmit={submitModel} className="mt-9 grid gap-5 rounded-[var(--radius-lg)] bg-[var(--surface-raised)] p-5 shadow-[0_18px_60px_rgba(32,33,40,0.08)] sm:p-7">
+            <form onSubmit={submitModel} className="mt-9 grid gap-5 rounded-[var(--radius-lg)] bg-[var(--surface-raised)] p-5 shadow-[0_18px_60px_rgba(56,48,39,0.10)] sm:p-7">
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field label="模型服务"><select value={provider} onChange={(event) => chooseProvider(event.target.value)} className="honey-setting-control">{providers.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
                 <Field label="API Key" hint="输入内容不会显示"><input value={apiKey} onChange={(event) => setApiKey(event.target.value)} type="password" autoComplete="new-password" placeholder="粘贴 API Key" className="honey-setting-control" /></Field>
@@ -160,9 +173,9 @@ export function OnboardingPage() {
                 <div className="flex items-center gap-2 text-[var(--accent)]"><CheckIcon size={18} weight="bold" /><strong>本地网页</strong></div>
                 <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">安装完成后会自动打开，也是默认聊天入口。</p>
               </section>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ChannelLinkPanel platform="weixin" configured={Boolean(settings.data?.settings.channels.weixin.configured)} onConnected={(value) => setConnected((items) => new Set(items).add(value))} />
-                <ChannelLinkPanel platform="feishu" configured={Boolean(settings.data?.settings.channels.feishu.configured)} onConnected={(value) => setConnected((items) => new Set(items).add(value))} />
+              <div inert={Boolean(previewStage)} className="grid gap-4 sm:grid-cols-2">
+                <ChannelLinkPanel platform="weixin" configured={previewStage ? false : Boolean(settings.data?.settings.channels.weixin.configured)} onConnected={(value) => setConnected((items) => new Set(items).add(value))} />
+                <ChannelLinkPanel platform="feishu" configured={previewStage ? false : Boolean(settings.data?.settings.channels.feishu.configured)} onConnected={(value) => setConnected((items) => new Set(items).add(value))} />
               </div>
             </div>
             <div className="mt-7 flex flex-wrap items-center gap-3"><Button onClick={() => setStage("ready")}>继续<ArrowRightIcon size={18} /></Button><button type="button" className="min-h-11 px-3 text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)]" onClick={() => setStage("ready")}>暂时只用网页</button></div>

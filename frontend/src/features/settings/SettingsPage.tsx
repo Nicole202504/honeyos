@@ -1,4 +1,4 @@
-import { CheckIcon, KeyIcon, LinkIcon } from "@phosphor-icons/react";
+import { CheckIcon, HeartbeatIcon, KeyIcon, LinkIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -11,6 +11,7 @@ import {
 import { PageHeader } from "../../components/honey/PageHeader";
 import { ErrorState, LoadingState } from "../../components/honey/PageState";
 import { ChannelLinkPanel } from "../../components/honey/ChannelLinkPanel";
+import { RecoveryActions } from "../../components/honey/RecoveryActions";
 import { Button } from "../../components/ui/Button";
 import { applyHoneyTheme, readHoneyTheme, type HoneyTheme } from "../../design-system/theme";
 import { useHoneyStore } from "../../runtime/honey-store";
@@ -169,6 +170,15 @@ export function SettingsPage() {
             <ChannelLinkPanel platform="weixin" configured={editable.channels.weixin.configured} onConnected={() => void settings.refetch()} />
             <ChannelLinkPanel platform="feishu" configured={editable.channels.feishu.configured} onConnected={() => void settings.refetch()} />
           </div>
+        </section>
+
+        <section className="border-t border-[var(--border)] pt-8">
+          <div className="flex items-center gap-2">
+            <HeartbeatIcon size={20} className="text-[var(--accent)]" />
+            <h2 className="text-lg font-semibold">连接与恢复</h2>
+          </div>
+          <p className="mt-2 max-w-[65ch] text-sm leading-6 text-[var(--foreground-muted)]">消息发不出去时先重新连接。仍然无响应再重启 HoneyOS，只会短暂中断网页，不会删除人设、记忆、聊天记录或密钥。</p>
+          <RecoveryActions className="mt-4" />
         </section>
 
         <section className="border-t border-[var(--border)] pt-8">

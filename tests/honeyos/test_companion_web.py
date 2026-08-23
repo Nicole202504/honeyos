@@ -532,6 +532,7 @@ def test_api_server_registers_companion_web_routes():
     assert ("POST", "/api/companion/settings/models") in routes
     assert ("POST", "/api/companion/settings/model") in routes
     assert ("POST", "/api/companion/restart") in routes
+    assert ("POST", "/api/companion/projects/open") in routes
     assert ("POST", "/api/companion/channels/{platform}/link") in routes
     assert ("GET", "/api/companion/channels/link/{link_id}") in routes
     assert ("POST", "/api/companion/new") in routes
@@ -546,6 +547,40 @@ def test_api_server_registers_companion_web_routes():
         "POST",
         "/api/companion/proactive/{delivery_id}/complete",
     ) in routes
+
+
+@pytest.mark.asyncio
+async def test_companion_project_html_opens_in_system_browser(tmp_path, monkeypatch):
+    adapter = _api_adapter()
+    home = tmp_path / ".honeyos"
+    project = tmp_path / "HoneyOS Projects" / "milk-night.html"
+    project.parent.mkdir()
+    project.write_text("<h1>Milk night</h1>", encoding="utf-8")
+    adapter._check_auth = MagicMock(return_value=None)
+    adapter._read_json_body = AsyncMock(return_value=({"path": str(project)}, None))
+    monkeypatch.setattr("honeyos.core.constants.get_honeyos_home", lambda: home)
+    opened = []
+    monkeypatch.setattr("webbrowser.open", lambda url, new=0: opened.append((url, new)) or True)
+
+    response = await adapter._handle_companion_project_open(SimpleNamespace())
+
+    assert response.status == 200
+    assert opened == [(project.as_uri(), 2)]
+
+
+@pytest.mark.asyncio
+async def test_companion_project_open_rejects_files_outside_workspace(tmp_path, monkeypatch):
+    adapter = _api_adapter()
+    home = tmp_path / ".honeyos"
+    outside = tmp_path / "outside.html"
+    outside.write_text("<h1>Outside</h1>", encoding="utf-8")
+    adapter._check_auth = MagicMock(return_value=None)
+    adapter._read_json_body = AsyncMock(return_value=({"path": str(outside)}, None))
+    monkeypatch.setattr("honeyos.core.constants.get_honeyos_home", lambda: home)
+
+    response = await adapter._handle_companion_project_open(SimpleNamespace())
+
+    assert response.status == 403
 
 
 @pytest.mark.asyncio

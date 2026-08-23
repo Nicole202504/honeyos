@@ -19,7 +19,7 @@ function AssistantTurn({ name, children, live = false }: { name: string; childre
   return (
     <article className="flex w-full items-start gap-3 text-[15px] leading-7" aria-live={live ? "polite" : undefined}>
       <HoneyAvatar name={name} className="mt-1 size-8 rounded-full text-xs" />
-      <div className="min-w-0 flex-1 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-4 shadow-[0_8px_24px_rgba(30,34,46,0.045)] sm:px-5">
+      <div className="min-w-0 flex-1 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-4 shadow-[0_8px_24px_rgba(56,48,39,0.05)] sm:px-5">
         {children}
       </div>
     </article>
@@ -246,7 +246,7 @@ export function ChatPage() {
             type="button"
             size="icon"
             variant="secondary"
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-[0_8px_24px_rgba(30,34,46,0.12)]"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-[0_8px_24px_rgba(56,48,39,0.12)]"
             aria-label="回到最新消息"
             onClick={() => {
               const node = scrollRef.current;
@@ -274,7 +274,7 @@ export function ChatPage() {
             ))}
           </div>
         ) : null}
-        <div className="flex items-end gap-2 rounded-[var(--radius-lg)] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2 shadow-[0_12px_32px_rgba(29,31,40,0.08)] focus-within:ring-2 focus-within:ring-[var(--focus)]">
+        <div className="flex items-end gap-2 rounded-[var(--radius-lg)] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2 shadow-[0_12px_32px_rgba(56,48,39,0.10)] focus-within:ring-2 focus-within:ring-[var(--focus)]">
           <input ref={fileRef} type="file" accept="image/*" multiple className="sr-only" onChange={attachImages} />
           <Button type="button" size="icon" variant="ghost" aria-label="添加图片" disabled={sending || attachments.length >= 4} onClick={() => fileRef.current?.click()}>
             <ImageIcon size={20} />

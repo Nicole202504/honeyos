@@ -119,6 +119,45 @@ export const restartCompanion = () =>
     body: "{}",
   });
 
+export const openCompanionProject = (path: string) =>
+  requestJson<{ opened: true }>("/api/companion/projects/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+
+export async function companionIsReady(): Promise<boolean> {
+  try {
+    const response = await fetch(apiPath("/health"), {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function waitForCompanionReady(options: {
+  attempts?: number;
+  delayMs?: number;
+  initialDelayMs?: number;
+} = {}): Promise<boolean> {
+  const attempts = Math.max(1, options.attempts ?? 45);
+  const delayMs = Math.max(100, options.delayMs ?? 1000);
+  const initialDelayMs = Math.max(0, options.initialDelayMs ?? 2500);
+  if (initialDelayMs) {
+    await new Promise((resolve) => window.setTimeout(resolve, initialDelayMs));
+  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await companionIsReady()) return true;
+    if (attempt + 1 < attempts) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+  }
+  return false;
+}
+
 export const updateCompanionMemory = (memoryId: string, action: "resolve" | "forget") =>
   requestJson<{ success: true; id: string; action: string }>(
     `/api/companion/memories/${encodeURIComponent(memoryId)}`,

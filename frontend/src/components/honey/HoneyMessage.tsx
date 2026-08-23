@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
+import { ArrowSquareOutIcon } from "@phosphor-icons/react";
+import { useState, type ReactNode } from "react";
 
+import { openCompanionProject } from "../../api/companion";
 import { HoneyOSMessageFrame } from "../../custom/runtime";
 
 const hiddenImage = "[图片数据已隐藏]";
@@ -39,16 +41,45 @@ export function extractMessageParts(source: string): MessagePart[] {
   return parts.length ? parts : [{ kind: "text", content: value }];
 }
 
+function LocalProjectLink({ path }: { path: string }) {
+  const [status, setStatus] = useState<"idle" | "opening" | "failed">("idle");
+  const filename = path.split(/[\\/]/).filter(Boolean).at(-1) || "网页作品";
+
+  async function openProject() {
+    setStatus("opening");
+    try {
+      await openCompanionProject(path);
+      setStatus("idle");
+    } catch {
+      setStatus("failed");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="honey-local-project-link"
+      title={path}
+      disabled={status === "opening"}
+      onClick={() => void openProject()}
+    >
+      <ArrowSquareOutIcon size={17} aria-hidden="true" />
+      <span>{status === "opening" ? "正在打开" : status === "failed" ? "再试一次" : `打开 ${filename}`}</span>
+    </button>
+  );
+}
+
 function InlineText({ children }: { children: string }) {
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*([^*\n]+)\*\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))/g;
+  const pattern = /(\*\*([^*\n]+)\*\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|((?:(?:\/Users\/|\/home\/|~\/)[^\n<>]*?|[a-z]:\\[^\n<>]*?)\.(?:html?|htm))(?=$|\s|[，。！？；：、）》】]))/gi;
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(children))) {
     if (match.index > cursor) nodes.push(children.slice(cursor, match.index));
     if (match[2] !== undefined) nodes.push(<strong key={match.index}>{match[2]}</strong>);
     else if (match[3] !== undefined) nodes.push(<code key={match.index}>{match[3]}</code>);
-    else nodes.push(<a key={match.index} href={match[5]} target="_blank" rel="noreferrer">{match[4]}</a>);
+    else if (match[5] !== undefined) nodes.push(<a key={match.index} href={match[5]} target="_blank" rel="noreferrer">{match[4]}</a>);
+    else nodes.push(<LocalProjectLink key={match.index} path={match[6]} />);
     cursor = pattern.lastIndex;
   }
   if (cursor < children.length) nodes.push(children.slice(cursor));

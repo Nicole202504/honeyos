@@ -53,7 +53,7 @@ export function HoneyAvatar({ name, className, surface = "companion" }: HoneyAva
   return (
     <span
       className={cn(
-        "relative inline-grid size-11 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-md)] bg-[var(--foreground)] text-sm font-semibold text-[var(--background)] shadow-[0_10px_30px_rgba(34,36,44,0.14)]",
+        "relative inline-grid size-11 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-md)] bg-[var(--foreground)] text-sm font-semibold text-[var(--background)] shadow-[0_10px_30px_rgba(56,48,39,0.14)]",
         className,
       )}
       aria-hidden="true"

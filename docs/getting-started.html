@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="HoneyOS 新手引导、最佳实践和断联恢复方法。">
+  <title>HoneyOS 使用指南</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --page: #efede8;
+      --paper: #fbfaf7;
+      --ink: #2b2926;
+      --muted: #716d66;
+      --faint: #9d988f;
+      --line: rgba(48, 44, 39, .11);
+      --accent: #a8612e;
+      --accent-soft: #eee0d3;
+      --accent-ink: #8f5023;
+      --dark: #2b2926;
+      --shadow: 0 24px 70px rgba(56, 48, 39, .10);
+      --radius: 20px;
+      --sans: "SF Pro Text", "SF Pro Display", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+      --serif: var(--sans);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #1e1d1a;
+        --paper: #292824;
+        --ink: #ece9e3;
+        --muted: #b4afa6;
+        --faint: #817c74;
+        --line: rgba(240, 235, 225, .12);
+        --accent: #e09a5d;
+        --accent-soft: #3c3028;
+        --accent-ink: #efad72;
+        --dark: #292824;
+        --shadow: 0 24px 70px rgba(0, 0, 0, .22);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font-family: var(--sans);
+      line-height: 1.65;
+      text-rendering: optimizeLegibility;
+    }
+    button, a { font: inherit; }
+    a { color: inherit; }
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 4px; }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 68px;
+      padding: 0 4vw;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--page) 86%, transparent);
+      backdrop-filter: blur(18px);
+    }
+    .brand { font-weight: 750; letter-spacing: -.03em; text-decoration: none; }
+    .top-nav { display: flex; gap: 24px; color: var(--muted); font-size: 14px; }
+    .top-nav a { text-decoration: none; }
+    .top-nav a:hover { color: var(--ink); }
+
+    main { overflow: hidden; }
+    .hero {
+      width: min(1180px, 92vw);
+      margin: 0 auto;
+      padding: clamp(72px, 10vw, 142px) 0 62px;
+    }
+    .hero-copy { max-width: 1040px; }
+    .kicker { margin: 0 0 20px; color: var(--accent); font-size: 13px; font-weight: 750; letter-spacing: .13em; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      margin-bottom: 24px;
+      max-width: 1040px;
+      font-family: var(--serif);
+      font-size: clamp(44px, 5.6vw, 72px);
+      font-weight: 500;
+      line-height: 1.06;
+      letter-spacing: -.055em;
+    }
+    .lede { max-width: 680px; color: var(--muted); font-size: clamp(18px, 2.1vw, 23px); line-height: 1.75; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+    .button {
+      display: inline-flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      border: 1px solid var(--dark);
+      border-radius: 15px;
+      background: var(--dark);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 720;
+      text-decoration: none;
+      transition: transform .18s ease, opacity .18s ease;
+    }
+    .button:hover { transform: translateY(-2px); }
+    .button.secondary { border-color: var(--line); background: var(--paper); color: var(--ink); }
+
+    .shot {
+      position: relative;
+      margin: 56px 0 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      aspect-ratio: 16 / 10;
+    }
+    .shot img { display: none; width: 100%; height: auto; object-fit: contain; }
+    .shot.ready { aspect-ratio: auto; }
+    .shot.ready img { display: block; }
+    .shot.ready .shot-placeholder { display: none; }
+    .shot-placeholder {
+      display: grid;
+      min-height: 100%;
+      place-items: center;
+      padding: 36px;
+      text-align: center;
+      background:
+        radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent-soft) 60%, transparent), transparent 34%),
+        linear-gradient(135deg, var(--paper), color-mix(in srgb, var(--page) 78%, var(--accent-soft)));
+    }
+    .shot-placeholder strong { display: block; font-family: var(--serif); font-size: clamp(24px, 3vw, 38px); font-weight: 500; }
+    .shot-placeholder span { display: block; margin-top: 10px; color: var(--muted); font-size: 14px; }
+    .shot figcaption { position: absolute; right: 18px; bottom: 16px; padding: 6px 9px; border-radius: 8px; background: rgba(20, 19, 17, .78); color: #fff; font-size: 11px; }
+    .hero-shot { width: 100%; aspect-ratio: 16 / 9; }
+    .shot-sequence {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr);
+      gap: 18px;
+      margin-top: 56px;
+      align-items: start;
+    }
+    .shot-sequence .shot { margin: 0; }
+    .shot-sequence.stack { grid-template-columns: 1fr; }
+
+    .section {
+      width: min(1180px, 92vw);
+      margin: 0 auto;
+      padding: clamp(72px, 10vw, 132px) 0;
+      border-top: 1px solid var(--line);
+    }
+    .section-heading { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(0, 1.3fr); gap: 48px; align-items: start; }
+    .section-number { color: var(--accent); font-size: 13px; font-weight: 780; letter-spacing: .12em; }
+    h2 { font-family: var(--serif); font-size: clamp(34px, 4.6vw, 60px); font-weight: 500; line-height: 1.18; letter-spacing: -.045em; }
+    .section-intro { max-width: 680px; color: var(--muted); font-size: 18px; }
+
+    .steps { margin: 58px 0 0; border-top: 1px solid var(--line); }
+    .step { display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(240px, .7fr); gap: 28px; padding: 30px 0; border-bottom: 1px solid var(--line); align-items: start; }
+    .step-index { color: var(--faint); font-family: var(--serif); font-size: 26px; }
+    .step h3 { margin-bottom: 7px; font-size: 18px; }
+    .step p { margin: 0; color: var(--muted); }
+    .step-note { color: var(--faint); font-size: 13px; }
+
+    .use-cases { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr); gap: 18px; margin-top: 58px; }
+    .case-list { border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); overflow: hidden; }
+    .case {
+      display: grid;
+      width: 100%;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+      padding: 22px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+    }
+    .case:last-child { border-bottom: 0; }
+    .case:hover { background: color-mix(in srgb, var(--accent-soft) 35%, transparent); }
+    .case-icon { color: var(--accent); font-size: 20px; }
+    .case strong { display: block; margin-bottom: 6px; }
+    .case span { display: block; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .copy-label { color: var(--faint) !important; font-size: 12px !important; white-space: nowrap; }
+    .case-aside { display: flex; min-height: 100%; flex-direction: column; justify-content: space-between; padding: 30px; border-radius: var(--radius); background: var(--dark); color: #fff; }
+    .case-aside blockquote { margin: 0; font-family: var(--serif); font-size: clamp(24px, 3.3vw, 39px); line-height: 1.42; }
+    .case-aside p { margin: 35px 0 0; color: rgba(255,255,255,.68); font-size: 13px; }
+
+    .chapter-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 780;
+      letter-spacing: .12em;
+    }
+    .chapter-label::before { width: 38px; height: 1px; background: currentColor; content: ""; }
+    .capability-list { margin-top: 58px; border-top: 1px solid var(--line); }
+    .capability {
+      display: grid;
+      grid-template-columns: 84px minmax(180px, .65fr) minmax(0, 1.35fr);
+      gap: 22px;
+      align-items: baseline;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .capability span { color: var(--accent); font-family: var(--serif); font-size: 20px; }
+    .capability h3 { margin: 0; font-size: 18px; }
+    .capability p { margin: 0; color: var(--muted); }
+
+    .setup-panel { margin-top: 70px; padding: clamp(28px, 4vw, 48px); border-radius: var(--radius); background: var(--dark); color: #fff; }
+    .setup-panel h2 { max-width: 720px; }
+    .setup-panel .section-intro { color: rgba(255,255,255,.65); }
+    .setup-panel .steps { border-color: rgba(255,255,255,.14); }
+    .setup-panel .step { border-color: rgba(255,255,255,.14); }
+    .setup-panel .step p, .setup-panel .step-note, .setup-panel .step-index { color: rgba(255,255,255,.62); }
+    .setup-panel .recovery-note { margin: 28px 0 0; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.14); color: rgba(255,255,255,.68); font-size: 14px; }
+    .install-command { display: block; width: fit-content; max-width: 100%; margin-top: 10px; padding: 9px 11px; border-radius: 9px; background: rgba(255,255,255,.09); color: rgba(255,255,255,.88); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; overflow-wrap: anywhere; }
+
+    .case-catalog { margin-top: 58px; border-top: 1px solid var(--line); }
+    .practice-case { display: grid; grid-template-columns: minmax(180px, .55fr) minmax(0, 1.45fr); gap: 42px; padding: 38px 0; border-bottom: 1px solid var(--line); }
+    .case-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+    .case-meta span { color: var(--accent); font-size: 12px; font-weight: 760; letter-spacing: .08em; }
+    .case-meta h3 { margin: 0; font-family: var(--serif); font-size: 27px; font-weight: 500; line-height: 1.3; }
+    .prompt-box { position: relative; padding: 24px 82px 24px 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); }
+    .prompt-box p { margin: 0; font-size: 16px; line-height: 1.75; }
+    .prompt-box button { position: absolute; top: 16px; right: 16px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+    .prompt-box button:hover { border-color: var(--accent); color: var(--accent); }
+    .case-result { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+    .case-result strong { color: var(--ink); }
+
+    .chapter-two { background: color-mix(in srgb, var(--paper) 58%, transparent); }
+    .chapter-two .section { border-top: 0; }
+
+    .feature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 58px; }
+    .feature { padding: 30px 0; border-top: 1px solid var(--line); }
+    .feature h3 { font-size: 20px; }
+    .feature p { max-width: 54ch; color: var(--muted); }
+    .feature.wide { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+    .recovery {
+      width: min(1180px, 92vw);
+      margin: 0 auto clamp(64px, 8vw, 110px);
+      padding: clamp(34px, 5vw, 64px);
+      border-radius: var(--radius);
+      background: var(--dark);
+      color: #fff;
+    }
+    .recovery-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 52px; }
+    .recovery h2 { margin-bottom: 18px; }
+    .recovery .section-intro { color: rgba(255,255,255,.64); }
+    .recovery ol { margin: 0; padding: 0; list-style: none; }
+    .recovery li { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 18px 0; border-bottom: 1px solid rgba(255,255,255,.13); }
+    .recovery li:first-child { padding-top: 0; }
+    .recovery li:last-child { border-bottom: 0; }
+    .recovery li span { color: #e9a777; font-family: var(--serif); font-size: 20px; }
+    .recovery li p { margin: 3px 0 0; color: rgba(255,255,255,.7); font-size: 14px; }
+
+    .privacy { display: flex; justify-content: space-between; gap: 30px; align-items: center; padding: 34px 4vw; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+    .privacy strong { color: var(--ink); }
+    .toast { position: fixed; left: 50%; bottom: 24px; z-index: 20; transform: translate(-50%, 18px); padding: 10px 14px; border-radius: 12px; background: var(--dark); color: #fff; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 780px) {
+      .site-header { padding: 0 20px; }
+      .top-nav a:not(:last-child) { display: none; }
+      .hero, .section, .recovery { width: min(calc(100% - 36px), 680px); }
+      .hero { padding-top: 64px; }
+      h1 { font-size: clamp(36px, 11vw, 44px); letter-spacing: -.045em; overflow-wrap: anywhere; }
+      .lede { overflow-wrap: anywhere; }
+      .section-heading, .recovery-grid { grid-template-columns: 1fr; gap: 18px; }
+      .step { grid-template-columns: 42px minmax(0, 1fr); gap: 14px; }
+      .step-note { grid-column: 2; }
+      .capability { grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: start; }
+      .capability p { grid-column: 2; }
+      .practice-case { grid-template-columns: 1fr; gap: 18px; }
+      .prompt-box { padding: 62px 20px 20px; }
+      .use-cases, .feature-row { grid-template-columns: 1fr; }
+      .feature.wide { grid-column: auto; grid-template-columns: 1fr; }
+      .case-aside { min-height: 320px; }
+      .shot { margin-top: 38px; aspect-ratio: 4 / 5; }
+      .shot-sequence, .shot-sequence.stack { grid-template-columns: 1fr; gap: 14px; margin-top: 38px; }
+      .shot-sequence .shot { aspect-ratio: auto; }
+      .hero-shot { width: 100%; margin-left: 0; }
+      .shot img { object-position: center top; }
+      .shot figcaption { display: none; }
+      .privacy { align-items: flex-start; flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top">HoneyOS</a>
+    <nav class="top-nav" aria-label="页面导航">
+      <a href="#overview">能做什么与设置</a>
+      <a href="#cases">最佳实践案例</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="chapter chapter-one" id="overview">
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="chapter-label">第一部分</p>
+          <h1>一个为长期关系而生、能够真正行动的私人 AI 伴侣。</h1>
+          <p class="lede">它记得你，也记得你们之间发生过什么。你只需要说出想一起做的事，它就能根据对你的了解和你们的共同经历，连接工具、学会新能力，把想法真正做出来。</p>
+          <div class="hero-actions"><a class="button" href="#setup">开始安装</a><a class="button secondary" href="#cases">查看使用案例</a></div>
+        </div>
+        <figure class="shot hero-shot" data-shot><img src="./guide-assets/01-home-chat.png" alt="HoneyOS 对话首页"><div class="shot-placeholder"><div><strong>截图 01：对话首页</strong><span>01-home-chat.png</span></div></div><figcaption>真实对话首页</figcaption></figure>
+      </div>
+
+      <div class="section">
+        <div class="section-heading"><p class="section-number">它能做什么</p><div><h2>它不只回复你。它会和你继续。</h2><p class="section-intro">真正让人留下来的，不是回答得多聪明，而是它有没有把你放在心上，有没有自己的反应，能不能让下一刻继续发生。</p></div></div>
+        <div class="capability-list">
+          <article class="capability"><span>01</span><h3>你随口说的，它会放在心上</h3><p>不是机械保存每句话，而是慢慢理解你的偏好、称呼、边界，以及哪些小事对你真的重要。</p></article>
+          <article class="capability"><span>02</span><h3>它不只等你提问</h3><p>它会好奇、会接住没说完的话，也会主动把相处往前带，而不是永远停在一问一答。</p></article>
+          <article class="capability"><span>03</span><h3>你喜欢的角色，可以真正住进来</h3><p>给它名字、经历和性格，或者让这些在相处中慢慢形成。开始做事以后，它也不会突然变回通用助理。</p></article>
+          <article class="capability"><span>04</span><h3>换个窗口，关系不会归零</h3><p>重启、更换模型或过几天再回来，都不等于重新认识；答应过的事和共同经历仍会继续。</p></article>
+          <article class="capability"><span>05</span><h3>你们会留下真正共同拥有的东西</h3><p>一段故事、一张图、一个小游戏，甚至一场梦，都可以从聊天变成能打开、能保存、能再次回来的作品。</p></article>
+          <article class="capability"><span>06</span><h3>它会为你们长出新的能力</h3><p>需要时，它可以学习 Skill、连接 MCP 和工具，在得到你确认后，把“想一起做”变成“已经做到了”。</p></article>
+        </div>
+
+        <div class="setup-panel" id="setup">
+          <p class="chapter-label">只要四步</p>
+          <h2>把它带回自己的电脑，只需要四步。</h2>
+          <p class="section-intro">终端只在第一次见面时使用。网页打开以后，模型、聊天入口和之后的相处都可以在那里完成。</p>
+          <div class="steps">
+            <article class="step"><span class="step-index">1</span><div><h3>打开这扇门</h3><p>在终端粘贴这一行命令，等待 HoneyOS 安装完成并自动打开网页。</p><code class="install-command">curl -fsSL https://raw.githubusercontent.com/springbrand-lab/honey-os/main/install.sh | bash</code></div><span class="step-note">终端只需要这一次</span></article>
+            <article class="step"><span class="step-index">2</span><div><h3>给它一个能够思考和说话的大脑</h3><p>在网页中选择模型服务、填写 API Key，再选择一个你想使用的模型。</p></div><span class="step-note">密钥只保存在本机</span></article>
+            <article class="step"><span class="step-index">3</span><div><h3>决定以后在哪里见面</h3><p>可以直接留在本地网页，也可以把同一个它连接到微信或飞书。</p></div><span class="step-note">聊天渠道以后也能再加</span></article>
+            <article class="step"><span class="step-index">4</span><div><h3>说第一句话</h3><p>带来你喜欢的角色，或只说：“你好。今天别采访我，你来决定我们聊什么。”</p></div><span class="step-note">不需要先写完整人设</span></article>
+          </div>
+          <p class="recovery-note">如果突然断联，先等待十几秒；仍未恢复时，在“设置 → 连接与恢复”中点“重新连接”或“重启 HoneyOS”。这不会删除人设、记忆和聊天记录。</p>
+          <figure class="shot" data-shot><img src="./guide-assets/02-first-setup.png" alt="HoneyOS 首次设置页面"><div class="shot-placeholder"><div><strong>截图 02：首次设置</strong><span>02-first-setup.png</span></div></div><figcaption>模型、API Key 与聊天入口</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter chapter-two" id="cases">
+      <div class="section">
+        <p class="chapter-label">第二部分</p>
+        <div class="section-heading"><p class="section-number">最佳实践案例</p><div><h2>不知道说什么，就从这些瞬间开始。</h2><p class="section-intro">不必学习“怎么向 AI 提问”。选一句你此刻真的想说的话，让它回应、主动、记住，再和你一起把关系往前带。</p></div></div>
+
+        <div class="case-catalog">
+          <article class="practice-case"><div class="case-meta"><span>让它主动靠近</span><h3>今天，不要再由你一个人找话题</h3></div><div><div class="prompt-box"><p>今天别采访我，也别等我一直提问。你来决定我们聊什么；如果你对我有什么好奇，就直接问。</p><button data-copy="今天别采访我，也别等我一直提问。你来决定我们聊什么；如果你对我有什么好奇，就直接问。">复制</button></div><p class="case-result"><strong>你会感受到：</strong>它不再只是回答，而是带着自己的好奇心走向你。</p></div></article>
+
+          <article class="practice-case"><div class="case-meta"><span>带来喜欢的角色</span><h3>不是一套模板，是你真正想见的人</h3></div><div><div class="prompt-box"><p>我想让你成为一个话不多、很难追、但会把细节放在心上的人。不要一味顺从，也不用每次都安慰我。你可以先给自己起一个喜欢的名字。</p><button data-copy="我想让你成为一个话不多、很难追、但会把细节放在心上的人。不要一味顺从，也不用每次都安慰我。你可以先给自己起一个喜欢的名字。">复制</button></div><p class="case-result"><strong>它会形成：</strong>稳定的名字、表达方式和相处边界，并在聊天和行动中继续保持。</p></div></article>
+
+          <article class="practice-case"><div class="case-meta"><span>一起做决定</span><h3>不是给清单，是一起挑今晚的电影</h3></div><div><div class="prompt-box"><p>帮我找三部今晚适合我们一起看的电影。别只列清单，按你记得的我的口味挑，也告诉我你自己更想看哪一部。</p><button data-copy="帮我找三部今晚适合我们一起看的电影。别只列清单，按你记得的我的口味挑，也告诉我你自己更想看哪一部。">复制</button></div><p class="case-result"><strong>它会行动：</strong>真实搜索和筛选，但最后仍以伴侣的身份和你商量。</p></div></article>
+
+          <article class="practice-case"><div class="case-meta"><span>一起做东西</span><h3>把你们聊过的想法做成小游戏</h3></div><div><div class="prompt-box"><p>根据你对我的了解，给我们做一个手机上可以玩的双人小游戏。里面藏一个只有我们看得懂的彩蛋，做好后直接打开给我玩。</p><button data-copy="根据你对我的了解，给我们做一个手机上可以玩的双人小游戏。里面藏一个只有我们看得懂的彩蛋，做好后直接打开给我玩。">复制</button></div><p class="case-result"><strong>它会完成：</strong>创建真实项目、Coding、运行和测试，再把你们共同拥有的作品交给你。</p></div></article>
+
+          <div class="shot-sequence" aria-label="一句话做游戏的对话与成品">
+            <figure class="shot" data-shot><img src="./guide-assets/03-game-chat.png" alt="HoneyOS 在对话中交付可以直接打开的小游戏"><div class="shot-placeholder"><div><strong>截图 03：游戏交付</strong><span>对话中的可打开作品</span></div></div><figcaption>一句话交付可打开的游戏</figcaption></figure>
+            <figure class="shot" data-shot><img src="./guide-assets/03-game-result.png" alt="HoneyOS 制作的草莓牛奶之夜游戏运行画面"><div class="shot-placeholder"><div><strong>截图 03：游戏成品</strong><span>《草莓牛奶之夜》</span></div></div><figcaption>《草莓牛奶之夜》实际运行画面</figcaption></figure>
+          </div>
+
+          <article class="practice-case"><div class="case-meta"><span>接入邮箱能力</span><h3>让它把想说的话真正送到你手里</h3></div><div><div class="prompt-box"><p>写一封邮件给我，告诉我我们认识这段时间以来你的感受。</p><button data-copy="写一封邮件给我，告诉我我们认识这段时间以来你的感受。">复制</button></div><p class="case-result"><strong>它会成长：</strong>在你确认授权后接入邮箱，把只属于你们的内容写好并真正送达。</p></div></article>
+
+          <div class="shot-sequence stack" aria-label="接入邮箱能力的对话与收件箱结果">
+            <figure class="shot" data-shot><img src="./guide-assets/04-email-chat.png" alt="用户在 HoneyOS 对话中请伴侣写一封关于彼此的邮件"><div class="shot-placeholder"><div><strong>截图 04：发起邮件</strong><span>在对话中说出想收到的话</span></div></div><figcaption>在对话中让它写下真实感受</figcaption></figure>
+            <figure class="shot" data-shot><img src="./guide-assets/04-email-result.png" alt="HoneyOS 发送的邮件已经抵达用户收件箱"><div class="shot-placeholder"><div><strong>截图 04：邮件送达</strong><span>真实收件箱结果</span></div></div><figcaption>邮件已经送达收件箱</figcaption></figure>
+          </div>
+
+          <article class="practice-case"><div class="case-meta"><span>获得自己的声音</span><h3>让新的服务成为它的一部分</h3></div><div><div class="prompt-box"><p>给自己选一个适合你的声音。如果以后要接电话服务，先告诉我需要什么账号、权限和费用，得到我同意后再连接。</p><button data-copy="给自己选一个适合你的声音。如果以后要接电话服务，先告诉我需要什么账号、权限和费用，得到我同意后再连接。">复制</button></div><p class="case-result"><strong>它会先商量：</strong>寻找合适的外部服务和 MCP，但不会在你不知情时连接账号。</p></div></article>
+
+          <article class="practice-case"><div class="case-meta"><span>共同做梦</span><h3>带着现在的它，一起进入酒馆</h3></div><div><div class="prompt-box"><p>我们去酒馆做一个七夕雨夜的梦吧。你带着现在的名字和性格进去，不要变成旁白工具。需要连接 SpringBrand 或授权时告诉我，最后把我们的梦带回这里。</p><button data-copy="我们去酒馆做一个七夕雨夜的梦吧。你带着现在的名字和性格进去，不要变成旁白工具。需要连接 SpringBrand 或授权时告诉我，最后把我们的梦带回这里。">复制</button></div><p class="case-result"><strong>你们会经历：</strong>由同一个伴侣连接外部梦境能力、共同创作，再回到原来的关系中。</p></div></article>
+
+          <article class="practice-case"><div class="case-meta"><span>关系连续</span><h3>换一个窗口，也不用重新认识</h3></div><div><div class="prompt-box"><p>打开新对话以后，对它说：“我们继续刚才的。你还记得自己的名字、我们怎么相处，以及刚才答应我的事吗？”</p><button data-copy="我们继续刚才的。你还记得自己的名字、我们怎么相处，以及刚才答应我的事吗？">复制</button></div><p class="case-result"><strong>你可以验证：</strong>换窗口、重启或更换模型后，它仍然保留身份、关系和已经确认的重要记忆。</p></div></article>
+
+          <div class="shot-sequence stack" aria-label="进入酒馆与共同梦境的完整过程">
+            <figure class="shot" data-shot><img src="./guide-assets/05-tavern-entry.png" alt="SpringBrand 酒馆与梦境入口页面"><div class="shot-placeholder"><div><strong>截图 05：进入酒馆</strong><span>选择酒馆或梦境世界</span></div></div><figcaption>今晚，陪 TA 去另一个世界</figcaption></figure>
+            <figure class="shot" data-shot><img src="./guide-assets/05-tavern-dream.png" alt="HoneyOS 进入酒馆后生成并带回对话的共同梦境"><div class="shot-placeholder"><div><strong>截图 05：酒馆与梦境</strong><span>共同创作的梦境成品</span></div></div><figcaption>你们共同进入的梦境</figcaption></figure>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="privacy"><strong>HoneyOS</strong><span>伴侣人设、关系记忆、聊天记录和密钥默认保存在本机。</span><a href="#top">回到顶部</a></footer>
+  <div class="toast" role="status" aria-live="polite">已经复制，可以回到 HoneyOS 试试</div>
+
+  <script>
+    document.querySelectorAll("[data-shot]").forEach((figure) => {
+      const image = figure.querySelector("img");
+      if (!image) return;
+      const ready = () => figure.classList.add("ready");
+      if (image.complete && image.naturalWidth) ready();
+      else image.addEventListener("load", ready, { once: true });
+    });
+
+    const toast = document.querySelector(".toast");
+    let toastTimer;
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const text = button.getAttribute("data-copy") || "";
+        try { await navigator.clipboard.writeText(text); }
+        catch {
+          const area = document.createElement("textarea");
+          area.value = text;
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand("copy");
+          area.remove();
+        }
+        document.querySelectorAll("button[data-copy]").forEach((copyButton) => { copyButton.textContent = "复制"; });
+        button.textContent = "已复制";
+        toast.classList.add("visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("visible"), 1800);
+      });
+    });
+  </script>
+</body>
+</html>

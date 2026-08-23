@@ -1,6 +1,6 @@
-import { ArrowClockwiseIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { WarningCircleIcon } from "@phosphor-icons/react";
 
-import { Button } from "../ui/Button";
+import { RecoveryActions } from "./RecoveryActions";
 
 export function LoadingState() {
   return (
@@ -18,12 +18,9 @@ export function ErrorState() {
       <WarningCircleIcon size={28} weight="duotone" className="text-[var(--danger)]" />
       <div>
         <h2 className="text-lg font-semibold">暂时没有连上 HoneyOS</h2>
-        <p className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">可以重新载入。如果服务已经停止，请先运行 honeyos restart。</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">先重新连接。如果仍然没有回应，可以直接从这里安全重启，不需要打开终端。</p>
       </div>
-      <Button onClick={() => window.location.reload()}>
-        <ArrowClockwiseIcon size={18} />
-        重新载入
-      </Button>
+      <RecoveryActions />
     </div>
   );
 }

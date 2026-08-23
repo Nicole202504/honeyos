@@ -2206,6 +2206,11 @@ class APIServerAdapter(BasePlatformAdapter):
             ),
             (
                 "POST",
+                "/api/companion/projects/open",
+                self._handle_companion_project_open,
+            ),
+            (
+                "POST",
                 "/api/companion/channels/{platform}/link",
                 self._handle_companion_channel_link,
             ),
@@ -2824,6 +2829,48 @@ class APIServerAdapter(BasePlatformAdapter):
                 {"error": "暂时无法自动重启，请稍后再试"}, status=503
             )
         return web.json_response({"accepted": True}, status=202)
+
+    async def _handle_companion_project_open(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        """Open a companion-created HTML project in the system browser.
+
+        The browser UI cannot navigate from an HTTP page to ``file://`` URLs.
+        Keep this as a small authenticated local action and only accept HTML
+        files inside the managed HoneyOS Projects workspace.
+        """
+
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await self._read_json_body(request)
+        if err:
+            return err
+        if set(body) != {"path"} or not isinstance(body.get("path"), str):
+            return web.json_response({"error": "需要提供要打开的网页文件"}, status=400)
+
+        from honeyos.companion.projects import path_is_in_managed_projects, project_root
+        from honeyos.core.constants import get_honeyos_home
+
+        root = project_root(get_honeyos_home()).expanduser().resolve()
+        try:
+            target = Path(body["path"]).expanduser().resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return web.json_response({"error": "这个网页文件已经不存在"}, status=404)
+        if not target.is_file() or target.suffix.lower() not in {".html", ".htm"}:
+            return web.json_response({"error": "目前只能直接打开网页作品"}, status=400)
+        if not path_is_in_managed_projects(target, root):
+            return web.json_response({"error": "只能打开 HoneyOS Projects 里的作品"}, status=403)
+
+        import webbrowser
+
+        try:
+            opened = await asyncio.to_thread(webbrowser.open, target.as_uri(), new=2)
+        except Exception:
+            opened = False
+        if not opened:
+            return web.json_response({"error": "系统浏览器暂时没有打开"}, status=503)
+        return web.json_response({"opened": True})
 
     def _get_companion_link_manager(self):
         manager = self._companion_link_manager
