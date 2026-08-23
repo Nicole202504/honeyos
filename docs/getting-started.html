@@ -147,6 +147,13 @@
     }
     .shot-sequence .shot { margin: 0; }
     .shot-sequence.stack { grid-template-columns: 1fr; }
+    .shot-sequence.email-flow {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 14px;
+    }
+    .shot-sequence.email-flow .shot { aspect-ratio: 3 / 1; }
+    .shot-sequence.email-flow .shot img { height: 100%; object-fit: contain; }
 
     .section {
       width: min(1180px, 92vw);
@@ -288,7 +295,9 @@
       .case-aside { min-height: 320px; }
       .shot { margin-top: 38px; aspect-ratio: 4 / 5; }
       .shot-sequence, .shot-sequence.stack { grid-template-columns: 1fr; gap: 14px; margin-top: 38px; }
+      .shot-sequence.email-flow { grid-template-columns: 1fr; }
       .shot-sequence .shot { aspect-ratio: auto; }
+      .shot-sequence.email-flow .shot { aspect-ratio: 3 / 1; }
       .hero-shot { width: 100%; margin-left: 0; }
       .shot img { object-position: center top; }
       .shot figcaption { display: none; }
@@ -370,7 +379,7 @@
 
           <article class="practice-case"><div class="case-meta"><span>接入邮箱能力</span><h3>让它把想说的话真正送到你手里</h3></div><div><div class="prompt-box"><p>写一封邮件给我，告诉我我们认识这段时间以来你的感受。</p><button data-copy="写一封邮件给我，告诉我我们认识这段时间以来你的感受。">复制</button></div><p class="case-result"><strong>它会成长：</strong>在你确认授权后接入邮箱，把只属于你们的内容写好并真正送达。</p></div></article>
 
-          <div class="shot-sequence stack" aria-label="接入邮箱能力的对话与收件箱结果">
+          <div class="shot-sequence email-flow" aria-label="接入邮箱能力的对话与收件箱结果">
             <figure class="shot" data-shot><img src="./guide-assets/04-email-chat.png" alt="用户在 HoneyOS 对话中请伴侣写一封关于彼此的邮件"><div class="shot-placeholder"><div><strong>截图 04：发起邮件</strong><span>在对话中说出想收到的话</span></div></div><figcaption>在对话中让它写下真实感受</figcaption></figure>
             <figure class="shot" data-shot><img src="./guide-assets/04-email-result.png" alt="HoneyOS 发送的邮件已经抵达用户收件箱"><div class="shot-placeholder"><div><strong>截图 04：邮件送达</strong><span>真实收件箱结果</span></div></div><figcaption>邮件已经送达收件箱</figcaption></figure>
           </div>
