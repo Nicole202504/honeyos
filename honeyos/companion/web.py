@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -29,6 +31,31 @@ def open_companion_web(*, port: int = DEFAULT_WEB_PORT, open_fn=None) -> bool:
 
     launcher = open_fn or webbrowser.open
     return bool(launcher(companion_web_url(port=port)))
+
+
+def restart_companion_in_background(*, popen_fn=subprocess.Popen) -> bool:
+    """Restart the local service after the current HTTP response is returned."""
+
+    executable = Path(sys.executable).with_name("honeyos")
+    if not executable.is_file():
+        return False
+    helper = (
+        "import subprocess,sys,time; "
+        "time.sleep(1.0); "
+        "subprocess.run([sys.argv[1], 'restart'], "
+        "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)"
+    )
+    try:
+        popen_fn(
+            [sys.executable, "-c", helper, str(executable)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        return False
+    return True
 
 
 def wait_for_companion_web(
@@ -88,5 +115,6 @@ __all__ = [
     "companion_profile",
     "companion_web_url",
     "open_companion_web",
+    "restart_companion_in_background",
     "wait_for_companion_web",
 ]

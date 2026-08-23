@@ -34,6 +34,23 @@ function memoryDate(memory: MemoryItem): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(date);
 }
 
+function companionMemoryCopy(memory: MemoryItem): string {
+  const content = memory.content
+    .replaceAll("用户", "你")
+    .replaceAll("伴侣", "我")
+    .replaceAll("你们", "我们")
+    .trim();
+  if (/^(我|我们|你)/.test(content)) return content;
+  const lead: Record<string, string> = {
+    long_term_memory: "我一直记得：",
+    temporary_state: "我留意到你最近：",
+    commitment: "我答应你的：",
+    episode: "我记得我们一起：",
+    open_loop: "我还想和你继续：",
+  };
+  return `${lead[memory.kind] || "我记得："}${content}`;
+}
+
 export function MemoriesPage() {
   const { loading, error, memories, recentChapters, replaceMemories, replaceRecentChapters, removeMemory } = useHoneyStore();
   const [filter, setFilter] = useState("all");
@@ -69,7 +86,7 @@ export function MemoriesPage() {
 
   return (
     <PageFrame>
-      <PageHeader title="记得的事" description="共同经历、长期记忆和还要继续做的事情，都保存在本机。" />
+      <PageHeader title="记得的事" description="它眼里的你、答应过的事，还有只属于你们的相处片段，都留在这里。" />
 
       <div className="mt-6 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="记忆类型">
         {filters.map((item) => (
@@ -97,7 +114,7 @@ export function MemoriesPage() {
         {visibleChapters.map((chapter: RecentChapter) => (
           <article key={`recent-${chapter.id}`} className="flex min-h-48 flex-col rounded-[var(--radius-lg)] bg-[var(--surface)] p-5">
             <header className="flex items-center justify-between gap-3 text-xs text-[var(--foreground-faint)]">
-              <span className="flex items-center gap-2"><BrainIcon size={17} className="text-[var(--accent)]" />最近</span>
+              <span className="flex items-center gap-2"><BrainIcon size={17} className="text-[var(--accent)]" />最近想起</span>
               <span>{memoryDate({ id: chapter.id, kind: "recent_chapter", content: chapter.summary, status: "active", created_at: chapter.created_at })}</span>
             </header>
             <h2 className="mt-5 font-semibold leading-6">{chapter.title}</h2>
@@ -110,7 +127,7 @@ export function MemoriesPage() {
               <span className="flex items-center gap-2"><BrainIcon size={17} className="text-[var(--accent)]" />{kindNames[memory.kind] || memory.kind}</span>
               <span>{memoryDate(memory)}</span>
             </header>
-            <p className="mt-5 break-words text-[15px] leading-7">{memory.content}</p>
+            <p className="mt-5 break-words text-[15px] leading-7">{companionMemoryCopy(memory)}</p>
             <div className="mt-auto flex flex-wrap gap-2 pt-5">
               {memory.kind === "open_loop" || memory.kind === "commitment" ? (
                 <Button
@@ -135,7 +152,7 @@ export function MemoriesPage() {
         )) : visibleChapters.length ? null : (
           <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border-strong)] p-8 sm:col-span-2">
             <h2 className="font-semibold">{filter === "all" ? "还没有留下需要长期记住的事" : "这一类暂时是空的"}</h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{filter === "recent_chapter" ? "每累计 20 条对话，Honey 会在后台整理出一条简短回顾。" : "继续自然地聊天就好，值得留下的内容会慢慢出现在这里。"}</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{filter === "recent_chapter" ? "再多聊一会儿，它会用自己的方式，把在意的片段留在这里。" : "继续自然地聊天就好，值得留下的内容会慢慢出现在这里。"}</p>
           </div>
         )}
       </div>

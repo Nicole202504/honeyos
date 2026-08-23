@@ -245,6 +245,7 @@ class StructuredMemoryStore:
         source_message_ids: Iterable[int],
         source_hash: str,
         now: datetime | None = None,
+        replace_existing: bool = False,
     ) -> ConversationChapter | None:
         """Persist one idempotent recent summary for a source window."""
 
@@ -290,6 +291,28 @@ class StructuredMemoryStore:
                     existing = connection.execute(
                         "SELECT * FROM conversation_chapters WHERE id = ?",
                         (chapter_id,),
+                    ).fetchone()
+                elif replace_existing:
+                    connection.execute(
+                        """
+                        UPDATE conversation_chapters
+                        SET lane_key = ?, title = ?, summary = ?,
+                            source_session_id = ?, source_message_ids = ?, created_at = ?
+                        WHERE source_hash = ?
+                        """,
+                        (
+                            lane_key,
+                            cleaned_title,
+                            cleaned_summary,
+                            source_session_id,
+                            json.dumps(normalized_source_ids, separators=(",", ":")),
+                            timestamp.isoformat(),
+                            source_hash,
+                        ),
+                    )
+                    existing = connection.execute(
+                        "SELECT * FROM conversation_chapters WHERE source_hash = ?",
+                        (source_hash,),
                     ).fetchone()
             return self._row_to_chapter(existing) if existing is not None else None
         except (OSError, sqlite3.Error, ValueError, TypeError):

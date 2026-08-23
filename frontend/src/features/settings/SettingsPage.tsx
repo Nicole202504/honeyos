@@ -10,6 +10,7 @@ import {
 } from "../../api/companion";
 import { PageHeader } from "../../components/honey/PageHeader";
 import { ErrorState, LoadingState } from "../../components/honey/PageState";
+import { ChannelLinkPanel } from "../../components/honey/ChannelLinkPanel";
 import { Button } from "../../components/ui/Button";
 import { applyHoneyTheme, readHoneyTheme, type HoneyTheme } from "../../design-system/theme";
 import { useHoneyStore } from "../../runtime/honey-store";
@@ -163,9 +164,10 @@ export function SettingsPage() {
 
         <section className="border-t border-[var(--border)] pt-8">
           <h2 className="text-lg font-semibold">聊天渠道</h2>
+          <p className="mt-2 max-w-[65ch] text-sm leading-6 text-[var(--foreground-muted)]">网页始终可以使用。也可以直接在这里扫码连接微信或飞书，不需要回到终端。</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <ChannelStatus name="微信" configured={editable.channels.weixin.configured} detail={editable.channels.weixin.configured ? "已经连接" : "可以通过安装向导扫码连接"} />
-            <ChannelStatus name="飞书" configured={editable.channels.feishu.configured} detail={editable.channels.feishu.configured ? "已经连接" : "尚未连接"} />
+            <ChannelLinkPanel platform="weixin" configured={editable.channels.weixin.configured} onConnected={() => void settings.refetch()} />
+            <ChannelLinkPanel platform="feishu" configured={editable.channels.feishu.configured} onConnected={() => void settings.refetch()} />
           </div>
         </section>
 
@@ -184,10 +186,6 @@ export function SettingsPage() {
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return <label className="grid gap-2"><span className="text-sm font-semibold">{label}</span>{hint ? <small className="text-xs leading-5 text-[var(--foreground-muted)]">{hint}</small> : null}{children}</label>;
-}
-
-function ChannelStatus({ name, configured, detail }: { name: string; configured: boolean; detail: string }) {
-  return <article className="rounded-[var(--radius-md)] bg-[var(--surface)] p-4"><div className="flex items-center justify-between gap-3"><strong>{name}</strong><span className={configured ? "text-xs text-[var(--success)]" : "text-xs text-[var(--foreground-faint)]"}>{configured ? "已连接" : "未连接"}</span></div><p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">{detail}</p></article>;
 }
 
 function PageFrame({ children }: { children: React.ReactNode }) {

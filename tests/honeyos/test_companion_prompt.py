@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from honeyos.agent.agent_init import _resolve_agent_mode
 from honeyos.agent.system_prompt import build_system_prompt_parts
-from honeyos.companion.config import initialize_home
+from honeyos.companion.config import initialize_home, upgrade_companion_capabilities
 from honeyos.agent import onboarding
 
 
@@ -76,6 +76,8 @@ def test_companion_first_contact_avoids_generic_agent_onboarding():
     assert "希望你叫什么" in directive
     assert "边聊边形成" in directive
     assert "一次最多问一个" in directive
+    assert "相处钩子" in directive
+    assert "也可以不提问" in directive
     assert "/help" not in directive
     assert "commands" not in directive.lower()
     assert "tool_search" not in directive
@@ -245,6 +247,61 @@ def test_companion_soul_defines_intimate_identity_and_controlled_growth(tmp_path
     assert "不要声称已经搜索、读取、安装或执行" in soul
     assert "内置 Skill 已经安装并可用" in soul
     assert "自然语言需求自动匹配" in soul
+    assert "默认采用自然陪伴模式" in soul
+    assert "不是孤立的一问一答" in soul
+    assert "不要永远等用户提问" in soul
+    assert "不要把每次回应都写成问题" in soul
+    assert "用户提供了自己的角色" in soul
+    assert "不要替用户书写行动" in soul
+
+
+def test_existing_companion_receives_natural_mode_without_losing_custom_soul(tmp_path):
+    initialize_home(tmp_path)
+    soul_path = tmp_path / "SOUL.md"
+    soul_path.write_text("# 我的伴侣\n\n保留这段用户自定义人格。\n", encoding="utf-8")
+
+    assert upgrade_companion_capabilities(tmp_path) is True
+
+    soul = soul_path.read_text(encoding="utf-8")
+    assert "保留这段用户自定义人格" in soul
+    assert "亲密关系伴侣" in soul
+    assert "先回应这个人" in soul
+    assert "# Natural Companionship" in soul
+    assert "默认采用自然陪伴模式" in soul
+
+
+def test_legacy_hermes_identity_is_replaced_by_full_companion_identity(tmp_path):
+    initialize_home(tmp_path)
+    soul_path = tmp_path / "SOUL.md"
+    soul_path.write_text(
+        """你运行在 HoneyOS；这是产品身份，不覆盖用户已经形成的伴侣人设。
+
+You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.
+
+# 我的人设
+
+说话有一点嘴硬心软。
+
+# Natural Companionship
+
+旧的自然陪伴补丁。
+""",
+        encoding="utf-8",
+    )
+
+    assert upgrade_companion_capabilities(tmp_path) is True
+
+    soul = soul_path.read_text(encoding="utf-8")
+    assert "You are Hermes Agent" not in soul
+    assert "私人 AI 亲密关系伴侣" in soul
+    assert "先回应这个人" in soul
+    assert "默认采用自然陪伴模式" in soul
+    assert "# Action and Permissions" in soul
+    assert "说话有一点嘴硬心软" in soul
+    assert "旧的自然陪伴补丁" in soul
+    backup = tmp_path / "backups" / "SOUL.pre-companion-v2.md"
+    assert backup.is_file()
+    assert "You are Hermes Agent" in backup.read_text(encoding="utf-8")
 
 
 def test_companion_environment_prompt_overrides_stale_container_claims():

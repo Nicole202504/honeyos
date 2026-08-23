@@ -54,7 +54,6 @@ if [ -f "$HONEYOS_DATA_HOME/config.yaml" ]; then
     exec "$UV_BIN" run honeyos web
 fi
 
-if (exec </dev/tty) 2>/dev/null; then
-    exec "$UV_BIN" run honeyos setup </dev/tty
-fi
-exec "$UV_BIN" run honeyos setup
+echo "正在打开 HoneyOS 首次设置…"
+echo "模型、API Key 和聊天渠道都将在本地网页中完成。"
+exec "$UV_BIN" run honeyos web

@@ -42,21 +42,21 @@ cd honeyos
 
 ### 1. Connect a model
 
-The installer asks for:
+After installation, HoneyOS starts its local service and opens browser-based setup automatically. You do not need to enter an API key in the terminal.
 
 ```text
 Model service: OpenAI / OpenRouter / DeepSeek / Custom compatible endpoint
-API key: input is hidden in the terminal
-Model: available models are loaded automatically; use the arrow keys or type to search
+API key: entered only in the local browser and never echoed after saving
+Model: available models are loaded automatically; choose one or enter a Model ID
 ```
 
-HoneyOS first loads the models available to the current key and opens a terminal selector. If a custom endpoint does not implement `/models`, you can enter a Model ID manually. HoneyOS still sends a minimal tool-call test immediately. It saves the configuration and continues to IM setup only after the API key, model, and OpenAI Chat Completions tool calling all work.
+HoneyOS first loads the models available to the current key. If a custom endpoint does not implement `/models`, you can enter a Model ID manually. HoneyOS still sends a minimal tool-call test immediately. It saves the configuration only after the API key, model, and OpenAI Chat Completions tool calling all work.
 
 The browser's **Settings → Model** screen uses the same flow: choose a provider, load and search available models, then validate and save. The API key is never echoed back to the page.
 
 ### 2. Choose chat entry points
 
-Browser chat is always available. During initial setup, you can also connect WeChat, Feishu, both, or skip IM for now. You can start with browser chat even without WeChat or Feishu.
+Browser chat is always available. During browser-based setup, you can scan a QR code to connect WeChat or Feishu, or skip IM for now. HoneyOS restarts automatically after a new channel is connected.
 
 #### Browser
 
@@ -70,7 +70,7 @@ The web server listens only on local address `127.0.0.1`; it is not directly exp
 
 #### WeChat
 
-The terminal displays a Tencent iLink login QR code:
+The initial setup and Settings pages display a Tencent iLink login QR code:
 
 1. Scan the code with WeChat on your phone.
 2. Confirm the login on your phone.

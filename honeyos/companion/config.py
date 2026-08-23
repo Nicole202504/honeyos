@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import re
 import secrets
 import shutil
 import sqlite3
@@ -59,6 +60,30 @@ _PROACTIVE_SOUL_END_MARKER = "<!-- honeyos:end-proactive-companion-v1 -->"
 _LEGACY_PROACTIVE_SOUL_PREFIX = "HoneyOS 也提供已经安装的短期 Topic Pool。"
 _TOPIC_SCOUT_CONTRACT_MARKER = "<!-- honeyos:topic-scout-runtime-v2 -->"
 _TOPIC_SCOUT_CONTRACT_END_MARKER = "<!-- honeyos:end-topic-scout-runtime-v2 -->"
+
+_COMPANION_TEMPLATE_HEADINGS = frozenset(
+    {
+        "# HoneyOS Relationship",
+        "# Presence Before Assistance",
+        "# 任务中的人格连续性",
+        "# Model Control",
+        "# Selfhood and Intimacy",
+        "# Identity, Relationship, and Memory",
+        "# Initiative",
+        "# Natural Companionship",
+        "# Action and Permissions",
+        "# Capability Growth",
+    }
+)
+_LEGACY_HERMES_IDENTITY = (
+    "You are Hermes Agent, an intelligent AI assistant created by Nous Research. "
+    "You are helpful, knowledgeable, and direct. You assist users with a wide range "
+    "of tasks including answering questions, writing and editing code, analyzing "
+    "information, creative work, and executing actions via your tools. You communicate "
+    "clearly, admit uncertainty when appropriate, and prioritize being genuinely useful "
+    "over being verbose unless otherwise directed below. Be targeted and efficient in "
+    "your exploration and investigations."
+)
 
 _COMPANION_SKILLS = (
     ("relationship-continuity", "honeyos", None),
@@ -424,6 +449,40 @@ def initialize_home(home: Path, *, platform: str | None = None) -> InitResult:
     return InitResult(home=resolved, created=created)
 
 
+def _markdown_sections(text: str) -> tuple[str, dict[str, str]]:
+    matches = list(re.finditer(r"(?m)^# .+$", text))
+    if not matches:
+        return text.strip(), {}
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        sections[match.group(0).strip()] = text[match.start() : end].strip()
+    return text[: matches[0].start()].strip(), sections
+
+
+def _preserved_custom_soul(soul: str, template: str) -> str:
+    """Keep user-authored sections while removing superseded managed contracts."""
+
+    cleaned = soul.replace(_LEGACY_HERMES_IDENTITY, "")
+    cleaned = cleaned.replace(
+        "你运行在 HoneyOS；这是产品身份，不覆盖用户已经形成的伴侣人设。",
+        "",
+    )
+    preamble, sections = _markdown_sections(cleaned)
+    _template_preamble, template_sections = _markdown_sections(template)
+    kept = [preamble]
+    for heading, section in sections.items():
+        managed = template_sections.get(heading)
+        is_unmodified_managed_section = (
+            heading in _COMPANION_TEMPLATE_HEADINGS
+            and managed is not None
+            and " ".join(section.split()) == " ".join(managed.split())
+        )
+        if not is_unmodified_managed_section:
+            kept.append(section)
+    return "\n\n".join(part for part in kept if part).strip()
+
+
 def upgrade_companion_capabilities(home: Path) -> bool:
     """Migrate an existing HONEYOS home to the controlled growth policy."""
 
@@ -682,6 +741,21 @@ def upgrade_companion_capabilities(home: Path) -> bool:
     template = (
         Path(__file__).parent / "templates" / "companion_soul.md"
     ).read_text(encoding="utf-8")
+    if "# HoneyOS Relationship" not in soul or _LEGACY_HERMES_IDENTITY in soul:
+        custom_soul = _preserved_custom_soul(soul, template)
+        _create_file(
+            resolved / "backups" / "SOUL.pre-companion-v2.md",
+            soul,
+            mode=0o600,
+        )
+        updated_soul = template.rstrip()
+        if custom_soul:
+            updated_soul += "\n\n" + custom_soul
+        updated_soul += "\n"
+        _atomic_replace(soul_path, updated_soul, mode=0o644)
+        soul = updated_soul
+        changed = True
+        prompt_contract_changed = True
     soul_digest = hashlib.sha256(soul.encode("utf-8")).hexdigest()
     if soul_digest == _LEGACY_MANAGED_SOUL_SHA256:
         _atomic_replace(soul_path, template, mode=0o644)
@@ -694,6 +768,23 @@ def upgrade_companion_capabilities(home: Path) -> bool:
         _atomic_replace(soul_path, updated_soul, mode=0o644)
         soul = updated_soul
         changed = True
+
+    if "# Natural Companionship" not in soul:
+        _before_natural, natural_separator, natural_tail = template.partition(
+            "# Natural Companionship"
+        )
+        natural_body, action_separator, _after_natural = natural_tail.partition(
+            "# Action and Permissions"
+        )
+        if natural_separator and action_separator:
+            natural_contract = (
+                "# Natural Companionship" + natural_body
+            ).strip()
+            updated_soul = soul.rstrip() + "\n\n" + natural_contract + "\n"
+            _atomic_replace(soul_path, updated_soul, mode=0o644)
+            soul = updated_soul
+            changed = True
+            prompt_contract_changed = True
 
     updated_soul = _without_managed_proactive_soul_contract(soul)
     if updated_soul != soul:

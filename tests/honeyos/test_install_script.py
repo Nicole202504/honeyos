@@ -47,15 +47,16 @@ def _run_installer(tmp_path: Path) -> tuple[subprocess.CompletedProcess[str], li
     return completed, calls
 
 
-def test_installer_runs_setup_for_a_new_user(tmp_path):
+def test_installer_opens_web_setup_for_a_new_user(tmp_path):
     completed, calls = _run_installer(tmp_path)
 
     assert completed.returncode == 0
     assert calls == [
         "sync --locked --quiet --extra honeyos --extra mcp",
-        "run honeyos setup",
+        "run honeyos web",
     ]
     assert "发现已有的 HoneyOS" not in completed.stdout
+    assert "模型、API Key 和聊天渠道都将在本地网页中完成" in completed.stdout
 
 
 def test_installer_upgrades_an_existing_user_without_repeating_setup(tmp_path):

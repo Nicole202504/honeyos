@@ -72,6 +72,16 @@ export type EditableCompanionSettings = {
 
 export type CompanionSettings = { settings: EditableCompanionSettings };
 
+export type CompanionChannelLink = {
+  link_id: string;
+  platform: "weixin" | "feishu";
+  status: "waiting" | "scanned" | "connected" | "expired" | "denied" | "error";
+  qr_url?: string;
+  qr_image?: string;
+  expires_in?: number;
+  restart_required?: boolean;
+};
+
 export const fetchCompanionBootstrap = (signal?: AbortSignal) =>
   requestJson<CompanionBootstrap>("/api/companion/bootstrap", { signal });
 
@@ -90,6 +100,23 @@ export const saveCompanionModel = (options: { provider: string; base_url: string
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(options),
+  });
+
+export const startCompanionChannelLink = (platform: "weixin" | "feishu") =>
+  requestJson<CompanionChannelLink>(`/api/companion/channels/${platform}/link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+
+export const fetchCompanionChannelLink = (linkId: string) =>
+  requestJson<CompanionChannelLink>(`/api/companion/channels/link/${encodeURIComponent(linkId)}`);
+
+export const restartCompanion = () =>
+  requestJson<{ accepted: true }>("/api/companion/restart", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
   });
 
 export const updateCompanionMemory = (memoryId: string, action: "resolve" | "forget") =>

@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncio
 import json
@@ -20,6 +20,7 @@ from honeyos.companion.web import (
     companion_profile,
     companion_web_url,
     open_companion_web,
+    restart_companion_in_background,
     wait_for_companion_web,
 )
 from honeyos.gateway.config import Platform
@@ -295,6 +296,21 @@ def test_open_companion_web_uses_the_loopback_url():
     assert opened == ["http://127.0.0.1:8642/"]
 
 
+def test_restart_companion_uses_detached_local_helper(monkeypatch, tmp_path):
+    python = tmp_path / "bin" / "python"
+    launcher = python.with_name("honeyos")
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    observed = []
+    monkeypatch.setattr("honeyos.companion.web.sys.executable", str(python))
+
+    assert restart_companion_in_background(
+        popen_fn=lambda command, **kwargs: observed.append((command, kwargs))
+    ) is True
+    assert observed[0][0][-1] == str(launcher)
+    assert observed[0][1]["start_new_session"] is True
+
+
 def test_wait_for_companion_web_retries_until_ready():
     attempts = []
 
@@ -501,6 +517,7 @@ def test_api_server_registers_companion_web_routes():
     assert ("GET", "/memories") in routes
     assert ("GET", "/relationship") in routes
     assert ("GET", "/settings") in routes
+    assert ("GET", "/onboarding") in routes
     assert ("GET", "/{asset_path:assets/.*}") in routes
     assert ("GET", "/api/companion/bootstrap") in routes
     assert ("GET", "/api/companion/settings") in routes
@@ -514,6 +531,7 @@ def test_api_server_registers_companion_web_routes():
     assert ("GET", "/api/companion/mcp/oauth/callback/{server_name}") in routes
     assert ("POST", "/api/companion/settings/models") in routes
     assert ("POST", "/api/companion/settings/model") in routes
+    assert ("POST", "/api/companion/restart") in routes
     assert ("POST", "/api/companion/channels/{platform}/link") in routes
     assert ("GET", "/api/companion/channels/link/{link_id}") in routes
     assert ("POST", "/api/companion/new") in routes
@@ -801,12 +819,14 @@ def test_same_origin_loopback_browser_request_is_allowed():
 
 def test_companion_page_csp_allows_only_its_own_assets_and_stream():
     page_policy = _security_headers_for_path("/")["Content-Security-Policy"]
+    onboarding_policy = _security_headers_for_path("/onboarding")["Content-Security-Policy"]
     react_policy = _security_headers_for_path("/new-ui/assets/app.js")["Content-Security-Policy"]
     api_policy = _security_headers_for_path("/v1/models")["Content-Security-Policy"]
 
     assert "default-src 'self'" in page_policy
     assert "connect-src 'self'" in page_policy
     assert "script-src 'self'" in page_policy
+    assert "script-src 'self'" in onboarding_policy
     assert "script-src 'self'" in react_policy
     assert api_policy == "default-src 'none'; frame-ancestors 'none'"
 

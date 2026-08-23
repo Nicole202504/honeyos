@@ -1308,11 +1308,11 @@ def _security_headers_for_path(path: str) -> Dict[str, str]:
     """Return strict API headers or the bundled UI's same-origin CSP."""
 
     headers = dict(_SECURITY_HEADERS)
-    if path in {"/", "/memories", "/relationship", "/settings"} or path.startswith(
+    if path in {"/", "/memories", "/relationship", "/settings", "/onboarding"} or path.startswith(
         "/assets/"
     ) or path.startswith("/new-ui") or bool(
         re.match(
-            r"^/p/[^/]+/(?:new-ui(?:/|$)|assets/|memories$|relationship$|settings$|$)",
+            r"^/p/[^/]+/(?:new-ui(?:/|$)|assets/|memories$|relationship$|settings$|onboarding$|$)",
             path,
         )
     ):
@@ -2162,6 +2162,7 @@ class APIServerAdapter(BasePlatformAdapter):
             ("GET", "/memories", self._handle_companion_react),
             ("GET", "/relationship", self._handle_companion_react),
             ("GET", "/settings", self._handle_companion_react),
+            ("GET", "/onboarding", self._handle_companion_react),
             ("GET", "/{asset_path:assets/.*}", self._handle_companion_react),
             ("GET", "/new-ui", self._handle_companion_react_redirect),
             ("GET", "/new-ui/", self._handle_companion_react),
@@ -2197,6 +2198,11 @@ class APIServerAdapter(BasePlatformAdapter):
                 "POST",
                 "/api/companion/settings/model",
                 self._handle_companion_model_settings,
+            ),
+            (
+                "POST",
+                "/api/companion/restart",
+                self._handle_companion_restart,
             ),
             (
                 "POST",
@@ -2804,6 +2810,20 @@ class APIServerAdapter(BasePlatformAdapter):
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
         return web.json_response({"models": models})
+
+    async def _handle_companion_restart(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        from honeyos.companion.web import restart_companion_in_background
+
+        if not restart_companion_in_background():
+            return web.json_response(
+                {"error": "暂时无法自动重启，请稍后再试"}, status=503
+            )
+        return web.json_response({"accepted": True}, status=202)
 
     def _get_companion_link_manager(self):
         manager = self._companion_link_manager

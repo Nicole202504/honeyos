@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, Mapping
 
 from honeyos.companion.continuity import StructuredMemoryItem, StructuredMemoryStore
+from honeyos.companion.profile import load_companion_profile
 
 
 Extractor = Callable[
@@ -61,6 +62,7 @@ class DistillationJob:
     source_hash: str
     now: datetime
     max_operations: int
+    companion_profile: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -239,13 +241,42 @@ async def extract_with_auxiliary_model(
         local_now = job.now.astimezone(get_timezone())
     except Exception:
         local_now = job.now
+    supplied_profile = getattr(job, "companion_profile", {})
+    profile = {
+        "companion_name": str(supplied_profile.get("companion_name") or "Honey"),
+        "personality": str(supplied_profile.get("personality") or ""),
+        "speaking_style": str(supplied_profile.get("speaking_style") or ""),
+        "user_nickname": str(supplied_profile.get("user_nickname") or ""),
+        "relationship": str(supplied_profile.get("relationship") or ""),
+        "boundaries": str(supplied_profile.get("boundaries") or ""),
+    }
     system_prompt = f"""You distill HoneyOS companion conversations into strict JSON.
 Current local time: {local_now.isoformat()}
 Return one object with a required chapter object and an operations array,
 maximum {job.max_operations} operations. The chapter is a concise recap for the
-user's Recent page. It must contain a short title, a factual 2-4 sentence summary
-of what was actually discussed, and evidence_message_ids. Do not infer identity,
-personality, relationship status, or feelings that were not explicitly stated.
+user's Recent page. This page is the companion's private-feeling memory of time
+spent with the user, not an audit log or a database report. The chapter must contain
+a short, warm title, a 2-4 sentence summary, and evidence_message_ids.
+
+Write the chapter in the companion's first-person voice. Address the user as “you”
+or by the confirmed nickname and use “I/we” for the companion and the relationship.
+Never refer to either person as “the user”, “the assistant”, “the companion”, or
+other system roles. Match the supplied companion_profile and the assistant's actual
+voice in the transcript. Include one grounded emotional reaction, detail the
+companion noticed, or gentle sense of why the exchange mattered when the transcript
+supports it. Never invent intense feelings, identity, relationship status, physical
+experiences, or events that were not supported. Translate implementation details
+such as deployment, health checks, paths, tool calls, and model internals into the
+human meaning of what the two of them were trying to accomplish; omit those details
+when they do not matter to their relationship. Do not write release notes, ticket
+titles, project status, or phrases such as “用户确认” and “伴侣完成”.
+
+The operations array is internal structured memory and must remain factual,
+source-backed, and independent from the chapter's emotional reflection. Its
+content is also user-visible, so phrase it naturally in the companion's voice:
+commitment as “I promised you…”, episode as “I remember we…”, open_loop as
+“I still want to continue…”, and temporary_state as “I know you are currently…”.
+Never use system-role labels in operation content either.
 Allowed kinds: open_loop, temporary_state, commitment, episode.
 Allowed actions: record, resolve, update. Never output forget.
 Every operation must cite one or more evidence_message_ids from the supplied transcript.
@@ -267,6 +298,7 @@ Write the chapter and each operation in the dominant language of the transcript
                 "content": json.dumps(
                     {
                         "reason": job.reason,
+                        "companion_profile": profile,
                         "active_memories": active_payload,
                         "transcript": transcript,
                     },
@@ -466,6 +498,7 @@ class MemoryDistiller:
                         now.isoformat(),
                     ),
                 )
+        profile = load_companion_profile(self.home)
         return DistillationJob(
             run_id=run_id,
             lane_key=lane_key,
@@ -477,6 +510,14 @@ class MemoryDistiller:
             source_hash=source_hash,
             now=now,
             max_operations=self.settings.max_operations,
+            companion_profile={
+                "companion_name": profile.companion_name,
+                "personality": profile.personality,
+                "speaking_style": profile.speaking_style,
+                "user_nickname": profile.user_nickname,
+                "relationship": profile.relationship,
+                "boundaries": profile.boundaries,
+            },
         )
 
     @staticmethod
@@ -522,10 +563,11 @@ class MemoryDistiller:
 
         topic = snippet(first["content"], 36)
         return {
-            "title": f"聊到：{topic}",
+            "title": f"我们聊到：{topic}",
             "summary": (
-                f"你提到“{snippet(first['content'], 180)}”；"
-                f"它回应“{snippet(last['content'], 180)}”。"
+                f"我记得你提到“{snippet(first['content'], 180)}”。"
+                f"我当时回应了“{snippet(last['content'], 180)}”；"
+                "这是我想替我们留住的一小段。"
             ),
             "evidence_message_ids": [message["_row_id"] for message in job.messages],
         }
@@ -543,11 +585,24 @@ class MemoryDistiller:
             evidence_ids = ()
         title = str(proposed.get("title") or "").strip()
         summary = str(proposed.get("summary") or "").strip()
+        system_voice = any(
+            marker in f"{title}\n{summary}"
+            for marker in (
+                "用户",
+                "伴侣",
+                "你们",
+                "assistant",
+                "Assistant",
+                "system",
+                "System",
+            )
+        )
         if (
             not title
             or not summary
             or not evidence_ids
             or not set(evidence_ids).issubset(valid_source_ids)
+            or system_voice
         ):
             proposed = self._fallback_chapter(job)
             title = proposed["title"]
@@ -561,6 +616,7 @@ class MemoryDistiller:
             source_message_ids=evidence_ids,
             source_hash=job.source_hash,
             now=job.now,
+            replace_existing=True,
         )
 
     def _apply_operations(
@@ -927,6 +983,85 @@ def repair_legacy_missing_recent_chapters(home: Path) -> int:
         return 0
 
 
+def repair_system_voice_recent_chapters(home: Path) -> int:
+    """Reopen old Recent summaries that expose internal user/assistant roles.
+
+    Existing cards remain visible until their source batch is replayed. The
+    chapter upsert then replaces the system-style copy in place, so upgrades do
+    not briefly erase a user's memories.
+    """
+
+    db_path = Path(home).expanduser().resolve() / "continuity.db"
+    if not db_path.exists():
+        return 0
+    marker = "companion-voice-chapters-v2"
+    try:
+        StructuredMemoryStore(home).list_chapters(lane_key="__migration_probe__", limit=1)
+        with sqlite3.connect(db_path, timeout=1.0) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS distillation_repairs (
+                    repair_key TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                )
+                """
+            )
+            if connection.execute(
+                "SELECT 1 FROM distillation_repairs WHERE repair_key = ?", (marker,)
+            ).fetchone():
+                return 0
+            rows = connection.execute(
+                """
+                SELECT r.id, r.lane_key, r.session_id, r.source_start_id
+                FROM conversation_chapters AS c
+                JOIN distillation_runs AS r ON r.source_hash = c.source_hash
+                WHERE c.title LIKE '%用户%'
+                   OR c.summary LIKE '%用户%'
+                   OR c.title LIKE '%伴侣%'
+                   OR c.summary LIKE '%伴侣%'
+                   OR c.summary LIKE '%assistant%'
+                ORDER BY COALESCE(r.completed_at, r.created_at) DESC
+                LIMIT 50
+                """
+            ).fetchall()
+            earliest: dict[tuple[str, str], int] = {}
+            for run_id, lane_key, session_id, source_start_id in rows:
+                connection.execute(
+                    """
+                    UPDATE distillation_runs
+                    SET status = 'failed', attempts = 0,
+                        error = 'companion voice chapter replay', completed_at = NULL
+                    WHERE id = ?
+                    """,
+                    (run_id,),
+                )
+                key = (str(lane_key), str(session_id))
+                cursor = max(0, int(source_start_id) - 1)
+                earliest[key] = min(earliest.get(key, cursor), cursor)
+            for (lane_key, session_id), cursor in earliest.items():
+                connection.execute(
+                    """
+                    INSERT INTO distillation_state (
+                        lane_key, session_id, last_source_row_id, updated_at
+                    ) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(lane_key, session_id) DO UPDATE SET
+                        last_source_row_id = MIN(
+                            distillation_state.last_source_row_id,
+                            excluded.last_source_row_id
+                        ),
+                        updated_at = excluded.updated_at
+                    """,
+                    (lane_key, session_id, cursor, _utc_now().isoformat()),
+                )
+            connection.execute(
+                "INSERT INTO distillation_repairs(repair_key, applied_at) VALUES (?, ?)",
+                (marker, _utc_now().isoformat()),
+            )
+            return len(rows)
+    except (sqlite3.Error, OSError, TypeError, ValueError):
+        return 0
+
+
 def active_honeyos_distiller() -> MemoryDistiller | None:
     """Return the active local distiller, fail-closed outside HoneyOS."""
 
@@ -937,6 +1072,7 @@ def active_honeyos_distiller() -> MemoryDistiller | None:
     home = Path(raw_home).expanduser().resolve()
     if runtime_id.startswith("honeyos-companion-"):
         repair_legacy_missing_recent_chapters(home)
+        repair_system_voice_recent_chapters(home)
         return MemoryDistiller(home)
 
     # launchd plists created by a few early HoneyOS builds omitted the runtime
@@ -952,5 +1088,6 @@ def active_honeyos_distiller() -> MemoryDistiller | None:
         is_honeyos_home = False
     if is_honeyos_home:
         repair_legacy_missing_recent_chapters(home)
+        repair_system_voice_recent_chapters(home)
         return MemoryDistiller(home)
     return None
